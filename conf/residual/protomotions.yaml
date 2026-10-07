@@ -1,0 +1,8 @@
+# The ProtoMotions residual policy (elastra/residual.py).
+# |correction| <= bound radians, added to the tracker's PD target.
+bound_rad: 0.85
+hidden: [256, 128]
+initial_log_std: -1.0
+position_observation: false
+# the ProtoMotions residual does not observe which surface it is on
+surface_observation: false

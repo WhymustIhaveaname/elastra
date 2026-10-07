@@ -1,0 +1,57 @@
+# The HoST residual policy (elastra/training.py), trained from scratch.
+controller: host
+description: >-
+  HoST residual policy: 1000 PPO updates on the relative-height success criterion
+  with the position observation; mattress a8, a16, a32, a64, rigid ground and
+  trampolines a1, a2 for 500 updates, then a16, a32, a64 replaced by a1, a2, a4
+seed: 283402
+# 256 environments; the environments of a surface keep it for a whole curriculum stage
+num_envs: 256
+surfaces:
+  mattress/a8: 32
+  mattress/a16: 32
+  mattress/a32: 32
+  mattress/a64: 32
+  rigid: 51
+  trampoline/a1: 39
+  trampoline/a2: 38
+curriculum:
+  # from update 500 the environments of a16, a32, a64 move to a1, a2, a4 (softest last)
+  - from_update: 500
+    replace:
+      mattress/a16: mattress/a1
+      mattress/a32: mattress/a2
+      mattress/a64: mattress/a4
+# the 32 HoST training initial states (data/initial_states/host.npz, split "train")
+initial_states: train
+# an episode: the 250 control steps of a HoST episode after its 30 unactuated steps
+horizon_control_steps: 220
+rollout_steps: 64
+updates: 1000
+ppo:
+  learning_rate: 3.0e-4
+  gamma: 0.995
+  gae_lambda: 0.95
+  clip_ratio: 0.2
+  epochs: 4
+  minibatches: 4
+  value_coef: 0.5
+  entropy_coef: 0.0
+  max_grad_norm: 1.0
+  # stop the epochs of an update once an epoch's mean approximate KL exceeds this
+  target_kl: 0.05
+reward:
+  height_weight: 1.0
+  upright_weight: 0.5
+  standing_bonus: 1.0
+  completion_bonus: 20.0
+  exit_penalty: 10.0
+  # torso height of HoST's standing pose (root at 0.793 m), forward kinematics
+  standing_torso_z_m: 0.8470000000000001
+# leaving the task area is checked once per control step in training (every physics
+# step in the evaluation)
+task_area_every_physics_step: false
+threads: 32
+torch_threads: 2
+checkpoint_every: 10
+out: outputs/train/host

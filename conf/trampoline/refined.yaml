@@ -1,0 +1,50 @@
+# The trampoline at half the node spacing, for the grid-spacing study.
+#
+# Same radius, travel, contact and pins as default.yaml with a 49 x 49 node grid
+# (0.05 m apart, 1661 free nodes).  The numbers keep the continuum membrane the same:
+# the edge stiffness k_lin is a membrane tension and does not change with the
+# spacing, k_cub scales with 1/spacing^2 (x4), and the 3.0 kg membrane mass and the
+# total node damping are spread over the free nodes (each / 1661 instead of / 377).
+# The membrane's highest frequency doubles; in the load-response test
+# (elastra-load-response) this grid diverges at the default 0.625 ms and is stable
+# at 0.3125 ms and 0.15625 ms.
+grid_size: 49
+radius_m: 1.2
+# node box half-height (inert, the boxes never collide)
+node_half_height_m: 0.025
+# slide range [0, travel]; a positive joint position is downward displacement
+travel_m: 0.43
+joint_margin_m: 0.002
+solreflimit: "0.000625 1.0"
+endstop:
+  lower_m: -1.0
+  margin_m: 0.025
+  solreflimit: "0.000625 1"
+# the joint equality constraints that pin the rim and the outside nodes
+pin:
+  solref: "0.000625 1"
+  solimp: "0.9999 0.9999 0.0001 0.5 2"
+# the collision surface (MJCF strings except the radius)
+flex:
+  radius_m: 0.002
+  friction: "1.2 0.01 0.001"
+  solref: "0.002 1.0"
+  solimp: "0.9 0.97 0.0005 0.5 2.0"
+  priority: 1
+solver:
+  integrator: implicitfast
+  solver: Newton
+  iterations: 150
+  tolerance: 1.0e-10
+  cone: elliptic
+trampolines:
+  a1:
+    edge_stiffness_n_per_m: 3025.7856630629003
+    edge_cubic_stiffness_n_per_m3: 4.0e-09
+    node_damping_n_s_per_m: 0.014303592531440937
+    node_mass_kg: 0.001806140878988561
+  a2:
+    edge_stiffness_n_per_m: 6051.571326125801
+    edge_cubic_stiffness_n_per_m3: 8.0e-09
+    node_damping_n_s_per_m: 0.020228334548622284
+    node_mass_kg: 0.001806140878988561

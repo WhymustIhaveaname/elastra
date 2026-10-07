@@ -1,0 +1,66 @@
+# The HoST 23-DoF Unitree G1 (assets/host/g1_23dof.urdf) and the deployment settings
+# of the two released HoST get-up controllers.  The numbers are those of
+# legged_gym/envs/g1/g1_config_ground.py (supine) and g1_config_ground_prone.py
+# (prone) in the HoST repository at commit 70bb580; the two files differ only in
+# the initial root orientation.
+policies:
+  prone: host/policies/prone.onnx
+  supine: host/policies/supine.onnx
+num_actions: 23
+# the controller observes the last 6 one-step observations of 76 numbers each
+history_length: 6
+one_step_observation_dim: 76
+# a HoST action a sets the PD target q + action_scale * a (radians)
+action_scale: 0.25
+clip_actions: 100.0
+clip_observations: 100.0
+# the first 30 control steps of an episode are unactuated (zero action, zero
+# observation history), as in HoST's own environment
+unactuated_control_steps: 30
+obs_scales:
+  ang_vel: 0.25
+  dof_pos: 1.0
+  dof_vel: 0.05
+# PD gains, looked up by the joint-name substring as in HoST
+stiffness: {hip: 150.0, knee: 200.0, ankle: 40.0, waist: 100.0, shoulder: 100.0, elbow: 100.0, wrist: 100.0}
+damping: {hip: 4.0, knee: 6.0, ankle: 2.0, waist: 4.0, shoulder: 4.0, elbow: 4.0, wrist: 4.0}
+default_joint_angles:
+  left_hip_pitch_joint: -0.1
+  left_hip_roll_joint: 0.0
+  left_hip_yaw_joint: 0.0
+  left_knee_joint: 0.3
+  left_ankle_pitch_joint: -0.2
+  left_ankle_roll_joint: 0.0
+  right_hip_pitch_joint: -0.1
+  right_hip_roll_joint: 0.0
+  right_hip_yaw_joint: 0.0
+  right_knee_joint: 0.3
+  right_ankle_pitch_joint: -0.2
+  right_ankle_roll_joint: 0.0
+  waist_yaw_joint: 0.0
+  left_shoulder_pitch_joint: 0.0
+  left_shoulder_roll_joint: 0.0
+  left_shoulder_yaw_joint: 0.0
+  left_elbow_joint: 0.8
+  left_wrist_roll_joint: 0.0
+  right_shoulder_pitch_joint: 0.0
+  right_shoulder_roll_joint: 0.0
+  right_shoulder_yaw_joint: 0.0
+  right_elbow_joint: 0.8
+  right_wrist_roll_joint: 0.0
+# joint armature of the robot DoFs (HoST's asset option)
+armature: 0.01
+# initial joint angles are drawn inside soft_dof_pos_limit times the URDF range
+soft_dof_pos_limit: 0.9
+# HoST's initial root state: position, and orientation as xyzw per posture
+initial_root_position_m: [0.0, 0.0, 0.5]
+initial_root_quat_xyzw:
+  prone: [0.0, 1.0, 0.0, 1.0]
+  supine: [0.0, -1.0, 0.0, 1.0]
+# the last entry of the one-step observation is action_scale + U(-w/2, w/2)
+action_scale_observation_noise_width: 0.05
+# the noise of the action-scale observation is drawn from default_rng(seed + offset),
+# seed being the initial state's seed
+observation_noise_seed_offset: 1000
+# an evaluation episode: one unactuated opening step plus 250 control steps (5.02 s)
+episode_control_steps: 251

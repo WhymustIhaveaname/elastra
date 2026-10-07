@@ -1,0 +1,16 @@
+# The get-up success criterion (elastra/success.py).
+#
+# Standing at a control step: the pelvis is at least `height_m` above the support
+# surface directly below the lowest robot collision point, and the projection of
+# the pelvis z axis on the world vertical is at least `uprightness`.  A trial
+# succeeds when the robot stands for `hold_s` without interruption before it leaves
+# the task area; leaving the task area before that is a failure.
+height_m: 0.7
+uprightness: 0.9
+hold_s: 1.0
+# The task area: |x| <= half_extents[0], |y| <= half_extents[1] (the mattress
+# footprint, 2.0 m x 1.9 m, centred on the origin, used for every surface).  The
+# robot has left it when the world-axis-aligned bounding box of any robot
+# collision geom crosses the boundary; checked after every physics step.
+task_area_half_extents_m: [1.0, 0.95]
+task_area_tolerance_m: 1.0e-12

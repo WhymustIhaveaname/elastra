@@ -1,0 +1,69 @@
+# The mattress (elastra/mattress.py).
+#
+# A 20 x 19 grid of rigid box cells, 0.1 m apart, covering 2.0 m x 1.9 m, with the
+# top of the unloaded cells at z = 0.  Each cell slides vertically on a joint with
+# stiffness k and damping c and has mass m.  Between cells there is one curvature
+# term: for every interior cell a five-point Laplacian fixed tendon (centre -4, four
+# neighbours +1) with stiffness b and damping d.  Static stiffness K = k I + b L^T L.
+#
+# One bed = five numbers k, b, c, d, m, each set independently.  Override any of
+# them on the command line, e.g.  mattress.beds.a4.c_n_s_per_m=8.0
+#
+# The beds a1 ... a64 are the seven beds of the paper; the names are labels.  a1 is
+# a soft foam: its k and b were fitted to force-indentation curves of a rigid flat
+# disc (356 mm and 100 mm diameter) pressed into a finely discretised foam model
+# (6.25 mm elements, Warp), pooled RMS error 1.7 %.  Its c is not fitted; it gives
+# the cell a damping ratio c / (2 sqrt(k m)) of 0.25.  Bed a<n> was written out
+# with k and b equal to n times those of a1, c equal to sqrt(n) times that of a1,
+# the same m and d = 0; the values below are those numbers, printed with repr() so
+# the scenes are reproduced exactly.
+#
+# d = 0 on every bed: MuJoCo's implicitfast integrator treats joint damping (c)
+# implicitly but tendon damping (d) explicitly, and a curvature damper d = (c/k) b
+# diverges on a64 at the 1600 Hz physics step.  With d = 0 all damping is cell
+# damping c, acting on the absolute cell velocity.
+grid:
+  nx: 20
+  ny: 19
+pitch_m: 0.1
+cell:
+  # box half-height; the cell is 0.05 m thick
+  half_height_m: 0.025
+  # slide range [0, travel]; a positive joint position is downward deflection
+  travel_m: 0.247
+  joint_margin_m: 0.0
+  solreflimit: "0.005 1.0"
+  # a soft end stop per cell, a one-joint fixed tendon on the same travel
+  endstop:
+    lower_m: -1.0
+    margin_m: 0.027
+    solreflimit: "0.005 1.0"
+# contact between the robot and the cell boxes (MJCF strings)
+contact:
+  friction: "1.2 0.01 0.001"
+  solref: "0.000625 1.8"
+  solimp: "0.97 0.995 0.0001 0.5 2.0"
+  priority: 1
+# the explicit foot-to-cell contact pairs start with this cell (see mattress.py)
+foot_pair_anchor_cell: [10, 9]
+# A rigid floor 0.26 m below the reference top, beside and under the bed.  Only the
+# robot collides with it: a robot that leaves the bed stands on it.
+floor:
+  z_m: -0.26
+  friction: "1.2 0.01 0.001"
+  solref: "0.000625 1.8"
+  solimp: "0.97 0.995 0.0001 0.5 2"
+  priority: 1
+solver:
+  integrator: implicitfast
+  solver: Newton
+  iterations: 100
+  tolerance: 1.0e-10
+beds:
+  a1: {k_n_per_m: 105.29769409372908, b_n_per_m: 50.717328946482425, c_n_s_per_m: 0.8760432544428323, d_n_s_per_m: 0.0, cell_mass_kg: 0.02915360266}
+  a2: {k_n_per_m: 210.59538818745816, b_n_per_m: 101.43465789296485, c_n_s_per_m: 1.2389122516585176, d_n_s_per_m: 0.0, cell_mass_kg: 0.02915360266}
+  a4: {k_n_per_m: 421.1907763749163, b_n_per_m: 202.8693157859297, c_n_s_per_m: 1.7520865088856645, d_n_s_per_m: 0.0, cell_mass_kg: 0.02915360266}
+  a8: {k_n_per_m: 842.3815527498326, b_n_per_m: 405.7386315718594, c_n_s_per_m: 2.477824503317035, d_n_s_per_m: 0.0, cell_mass_kg: 0.02915360266}
+  a16: {k_n_per_m: 1684.7631054996652, b_n_per_m: 811.4772631437188, c_n_s_per_m: 3.504173017771329, d_n_s_per_m: 0.0, cell_mass_kg: 0.02915360266}
+  a32: {k_n_per_m: 3369.5262109993305, b_n_per_m: 1622.9545262874376, c_n_s_per_m: 4.95564900663407, d_n_s_per_m: 0.0, cell_mass_kg: 0.02915360266}
+  a64: {k_n_per_m: 6739.052421998661, b_n_per_m: 3245.909052574875, c_n_s_per_m: 7.008346035542658, d_n_s_per_m: 0.0, cell_mass_kg: 0.02915360266}

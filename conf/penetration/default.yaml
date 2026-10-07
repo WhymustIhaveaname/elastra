@@ -1,0 +1,6 @@
+# Penetration of the robot into the surface (elastra/penetration.py), sampled once
+# per control step against the current (deformed) surface and scored while the robot
+# is in the task area.  A trial is invalid when the depth exceeds `limit_m` for
+# `sustained_steps` consecutive control steps.
+limit_m: 0.005
+sustained_steps: 10

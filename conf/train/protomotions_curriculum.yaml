@@ -1,0 +1,18 @@
+# The ProtoMotions residual policy with the HoST curriculum: the protomotions training configuration
+# for 500 updates, then 500 more with the environments of mattress a16, a32, a64 moved to
+# a1, a2, a4.
+defaults:
+  - protomotions
+  - _self_
+description: >-
+  ProtoMotions residual policy: 1000 PPO updates on the relative-height success
+  criterion; mattress a8, a16, a32, a64, rigid ground and trampolines a1, a2 for 500
+  updates, then a16, a32, a64 replaced by a1, a2, a4; the 39 training initial states
+updates: 1000
+curriculum:
+  - from_update: 500
+    replace:
+      mattress/a16: mattress/a1
+      mattress/a32: mattress/a2
+      mattress/a64: mattress/a4
+out: outputs/train/protomotions_curriculum

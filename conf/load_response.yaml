@@ -1,0 +1,29 @@
+# elastra-load-response: a rigid ball on the surface, for the physics-step and
+# grid-spacing studies (docs/validation.md).
+defaults:
+  - config
+  - _self_
+load:
+  radius_m: 0.125
+  mass_kg: 10.0
+  friction: "1 0.005 0.0001"
+  # where the ball touches down; (0, 0) is the surface centre
+  position_xy_m: [0.0, 0.0]
+static:
+  ramp_s: 3.0
+  hold_s: 2.0
+drop:
+  duration_s: 2.0
+record_dt_s: 0.000625
+physics_dts: [0.000625, 0.0003125, 0.00015625]
+surfaces:
+  - mattress/a1
+  - mattress/a2
+  - mattress/a4
+  - mattress/a8
+  - mattress/a16
+  - mattress/a32
+  - mattress/a64
+  - trampoline/a1
+  - trampoline/a2
+out: outputs/load_response/base

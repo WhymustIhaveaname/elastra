@@ -1,0 +1,25 @@
+# elastra-evaluate: run a controller from the fixed test initial states.
+defaults:
+  - config
+  - _self_
+# host or protomotions
+controller: host
+# a residual policy checkpoint, or null for the original controller alone
+policy: checkpoints/host_residual.pt
+# test (HoST: 96 states; ProtoMotions: 40 states) or train
+initial_states: test
+surfaces:
+  - mattress/a1
+  - mattress/a2
+  - mattress/a4
+  - mattress/a8
+  - mattress/a16
+  - mattress/a32
+  - mattress/a64
+  - trampoline/a1
+  - trampoline/a2
+  - rigid
+# parallel worker processes (one batch of environments each) and physics threads per worker
+workers: 4
+threads: 1
+out: outputs/evaluation/${controller}

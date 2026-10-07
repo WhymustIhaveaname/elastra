@@ -1,0 +1,5 @@
+# Relative paths are relative to the repository root.
+assets: assets
+outputs: outputs
+data: data
+checkpoints: checkpoints

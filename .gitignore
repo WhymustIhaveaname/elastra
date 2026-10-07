@@ -1,4 +1,11 @@
+# run outputs and downloaded third-party assets
 outputs/
+assets/
+# MuJoCo writes its warnings here
+MUJOCO_LOG.TXT
+# Python
 __pycache__/
 *.pyc
 .venv/
+.pytest_cache/
+.ruff_cache/

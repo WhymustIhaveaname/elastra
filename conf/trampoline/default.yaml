@@ -1,0 +1,54 @@
+# The trampoline (elastra/trampoline.py).
+#
+# A circular membrane of radius 1.2 m on a 25 x 25 grid of nodes (0.1 m
+# apart).  Interior nodes slide vertically; the rim and the storage nodes outside the
+# circle are pinned at zero.  Neighbouring active nodes are connected by the force
+# k_lin (x_i - x_j) + k_cub (x_i - x_j)^3; there is no spring to the ground.  The
+# robot touches a two-dimensional flex on the active nodes.
+#
+# One trampoline = the four numbers under `trampolines`, each set independently.
+# a1 is the reference trampoline: k_lin was derived from force-displacement data of
+# a recreational trampoline (Park et al.) with a fixed-rim circular membrane
+# approximation; the 3.0 kg membrane mass is spread over the 377 free nodes.  a2 was
+# written out with k_lin and k_cub twice those of a1 and node damping sqrt(2) times
+# that of a1; the names are labels.
+grid_size: 25
+radius_m: 1.2
+# node box half-height (inert, the boxes never collide)
+node_half_height_m: 0.025
+# slide range [0, travel]; a positive joint position is downward displacement
+travel_m: 0.43
+joint_margin_m: 0.002
+solreflimit: "0.000625 1.0"
+endstop:
+  lower_m: -1.0
+  margin_m: 0.025
+  solreflimit: "0.000625 1"
+# the joint equality constraints that pin the rim and the outside nodes
+pin:
+  solref: "0.000625 1"
+  solimp: "0.9999 0.9999 0.0001 0.5 2"
+# the collision surface (MJCF strings except the radius)
+flex:
+  radius_m: 0.002
+  friction: "1.2 0.01 0.001"
+  solref: "0.002 1.0"
+  solimp: "0.9 0.97 0.0005 0.5 2.0"
+  priority: 1
+solver:
+  integrator: implicitfast
+  solver: Newton
+  iterations: 150
+  tolerance: 1.0e-10
+  cone: elliptic
+trampolines:
+  a1:
+    edge_stiffness_n_per_m: 3025.7856630629003
+    edge_cubic_stiffness_n_per_m3: 1.0e-09
+    node_damping_n_s_per_m: 0.06301927637857664
+    node_mass_kg: 0.007957559681697613
+  a2:
+    edge_stiffness_n_per_m: 6051.571326125801
+    edge_cubic_stiffness_n_per_m3: 2.0e-09
+    node_damping_n_s_per_m: 0.08912271534552152
+    node_mass_kg: 0.007957559681697613

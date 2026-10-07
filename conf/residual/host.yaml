@@ -1,0 +1,20 @@
+# The HoST residual policy (elastra/residual.py).
+# |correction| <= bound HoST action units; one unit moves the PD target by HoST's
+# action scale (0.25 rad), so the bound is 0.33 rad.  It is ProtoMotions' 0.30 rad
+# scaled by the ratio of the median joint travel of the two G1 models (3.8397 / 3.4907).
+bound_action_units: 1.3199759360586705
+hidden: [256, 128]
+initial_log_std: -1.0
+# observe root xy, root velocity and the distances to the task-area boundary
+position_observation: true
+# the surface type one-hot, the stiffness input and the maximum surface deflection
+surface_observation: true
+stiffness_input:
+  # log2(s / s_ref) / log2_range: s is the mattress stiffness per unit area
+  # (k / pitch^2) or the trampoline edge stiffness; the references are bed a1 and
+  # trampoline a1, so a1 ... a64 read 0, 1/6, ..., 1
+  mattress_reference_k_n_per_m: 105.29769409372908
+  mattress_reference_pitch_m: 0.1
+  trampoline_reference_k_n_per_m: 3025.7856630629003
+  log2_range: 6.0
+  rigid_value: 1.0

@@ -1,0 +1,60 @@
+# The mattress at half the cell pitch, for the grid-spacing study.
+#
+# Same footprint (2.0 m x 1.9 m), travel, cell thickness, contact and floor as
+# default.yaml, with 40 x 38 cells 0.05 m apart.  Each bed's numbers are those of
+# default.yaml scaled so that the continuum the grid discretises stays the same:
+# the bed is a foundation of stiffness k / pitch^2 per unit area plus a plate of
+# bending stiffness b pitch^2 (the five-point Laplacian of a field w is pitch^2
+# times its continuum Laplacian), so k, c and m scale with pitch^2 (1/4 here) and b
+# with 1/pitch^2 (x4).
+#
+# Halving the pitch raises the highest bending frequency four-fold; MuJoCo integrates
+# the tendon springs explicitly, so the stiffer beds need a smaller physics step: in
+# the load-response test (elastra-load-response) a1 ... a4 are stable at the default
+# 0.625 ms, a8 and a16 need 0.3125 ms and a32, a64 need 0.15625 ms
+# (sim.physics_dt_s=0.00015625).
+grid:
+  nx: 40
+  ny: 38
+pitch_m: 0.05
+cell:
+  # box half-height; the cell is 0.05 m thick
+  half_height_m: 0.025
+  # slide range [0, travel]; a positive joint position is downward deflection
+  travel_m: 0.247
+  joint_margin_m: 0.0
+  solreflimit: "0.005 1.0"
+  # a soft end stop per cell, a one-joint fixed tendon on the same travel
+  endstop:
+    lower_m: -1.0
+    margin_m: 0.027
+    solreflimit: "0.005 1.0"
+# contact between the robot and the cell boxes (MJCF strings)
+contact:
+  friction: "1.2 0.01 0.001"
+  solref: "0.000625 1.8"
+  solimp: "0.97 0.995 0.0001 0.5 2.0"
+  priority: 1
+# the explicit foot-to-cell contact pairs start with this cell (see mattress.py)
+foot_pair_anchor_cell: [20, 18]
+# A rigid floor 0.26 m below the reference top, beside and under the bed.  Only the
+# robot collides with it: a robot that leaves the bed stands on it.
+floor:
+  z_m: -0.26
+  friction: "1.2 0.01 0.001"
+  solref: "0.000625 1.8"
+  solimp: "0.97 0.995 0.0001 0.5 2"
+  priority: 1
+solver:
+  integrator: implicitfast
+  solver: Newton
+  iterations: 100
+  tolerance: 1.0e-10
+beds:
+  a1: {k_n_per_m: 26.32442352343227, b_n_per_m: 202.8693157859297, c_n_s_per_m: 0.21901081361070807, d_n_s_per_m: 0.0, cell_mass_kg: 0.007288400665}
+  a2: {k_n_per_m: 52.64884704686454, b_n_per_m: 405.7386315718594, c_n_s_per_m: 0.3097280629146294, d_n_s_per_m: 0.0, cell_mass_kg: 0.007288400665}
+  a4: {k_n_per_m: 105.29769409372908, b_n_per_m: 811.4772631437188, c_n_s_per_m: 0.43802162722141613, d_n_s_per_m: 0.0, cell_mass_kg: 0.007288400665}
+  a8: {k_n_per_m: 210.59538818745816, b_n_per_m: 1622.9545262874376, c_n_s_per_m: 0.6194561258292588, d_n_s_per_m: 0.0, cell_mass_kg: 0.007288400665}
+  a16: {k_n_per_m: 421.1907763749163, b_n_per_m: 3245.909052574875, c_n_s_per_m: 0.8760432544428323, d_n_s_per_m: 0.0, cell_mass_kg: 0.007288400665}
+  a32: {k_n_per_m: 842.3815527498326, b_n_per_m: 6491.81810514975, c_n_s_per_m: 1.2389122516585176, d_n_s_per_m: 0.0, cell_mass_kg: 0.007288400665}
+  a64: {k_n_per_m: 1684.7631054996652, b_n_per_m: 12983.6362102995, c_n_s_per_m: 1.7520865088856645, d_n_s_per_m: 0.0, cell_mass_kg: 0.007288400665}

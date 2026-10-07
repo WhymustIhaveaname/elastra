@@ -1,0 +1,30 @@
+# The ProtoMotions 29-DoF Unitree G1 (assets/protomotions/g1_holo_compat.xml) and its
+# tracker's PD control.  The PD gains are read from the tracker's own
+# unified_pipeline.yaml; the settings below are what this repository adds.
+#
+# MuJoCo joint limits are soft constraints; the tracker was trained in a simulator
+# with hard articulation limits.  Every hinge joint therefore activates its limit
+# shortly before the physical boundary (margin) with a stiff solref.  The ankle roll
+# joints, whose range is only +-0.26 rad, get a wider margin.
+joint_limits:
+  margin_rad: 0.02
+  margin_rad_by_joint:
+    left_ankle_roll_joint: 0.06
+    right_ankle_roll_joint: 0.06
+  # written into the scene MJCF
+  solreflimit: "0.005 1"
+  # applied to the compiled model: time constant (s) and damping ratio
+  solref_time_constant_s: 0.00125
+  solref_damping_ratio: 1.0
+# the explicit foot-capsule contact pairs on the mattress (MJCF strings)
+foot_pairs:
+  friction: "0.8 0.8"
+  solref: "0.000625 1.8"
+  solimp: "0.97 0.995 0.0001 0.5 2.0"
+# Before an episode each initial state is placed on the undeformed surface (joint
+# velocities zero) and loaded quasi-statically: gravity ramps from zero along a half
+# cosine over ramp_s and is held for hold_s, while the actuators hold the initial
+# joint angles.
+settle:
+  ramp_s: 3.0
+  hold_s: 1.0

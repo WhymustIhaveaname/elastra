@@ -1,0 +1,6 @@
+# elastra-train: train a residual policy.  Choose the training configuration with train=<name>
+# (conf/train/): host, protomotions or protomotions_curriculum.
+defaults:
+  - config
+  - train: host
+  - _self_

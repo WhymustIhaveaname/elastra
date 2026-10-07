@@ -1,0 +1,8 @@
+# Physics and control clocks shared by every surface and controller.
+physics_dt_s: 0.000625     # 1600 Hz
+control_dt_s: 0.02         # 50 Hz, 32 physics steps per control step
+# MuJoCo raises every constraint time constant (solref[0]) to at least twice the
+# physics step.  Contact and constraint time constants are fixed at their values
+# for this step, so a run with a smaller physics step changes only the integration.
+contact_reference_dt_s: 0.000625
+gravity_m_s2: [0.0, 0.0, -9.81]

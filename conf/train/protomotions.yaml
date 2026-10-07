@@ -1,0 +1,47 @@
+# The ProtoMotions residual policy (elastra/training.py), trained from scratch.
+controller: protomotions
+description: >-
+  ProtoMotions residual policy: 500 PPO updates on the relative-height success
+  criterion; mattress a8, a16, a32, a64, rigid ground and trampolines a1, a2; the 39
+  training initial states
+seed: 287121
+num_envs: 256
+surfaces:
+  mattress/a8: 32
+  mattress/a16: 32
+  mattress/a32: 32
+  mattress/a64: 32
+  rigid: 51
+  trampoline/a1: 39
+  trampoline/a2: 38
+curriculum: []
+# the 39 training initial states (data/initial_states/protomotions.npz, train_*); an
+# episode lasts as long as the reference clip of its initial state
+initial_states: train
+rollout_steps: 64
+updates: 500
+ppo:
+  learning_rate: 3.0e-4
+  gamma: 0.995
+  gae_lambda: 0.95
+  clip_ratio: 0.2
+  epochs: 4
+  minibatches: 4
+  value_coef: 0.5
+  entropy_coef: 0.0
+  max_grad_norm: 1.0
+  target_kl: 0.05
+reward:
+  height_weight: 1.0
+  upright_weight: 0.5
+  standing_bonus: 1.0
+  completion_bonus: 20.0
+  exit_penalty: 10.0
+  # median over surfaces and clips of the torso height at the last frame of the
+  # reference clips, forward kinematics
+  standing_torso_z_m: 0.8402101556474134
+task_area_every_physics_step: false
+threads: 32
+torch_threads: 2
+checkpoint_every: 10
+out: outputs/train/protomotions

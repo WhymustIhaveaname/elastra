@@ -1,0 +1,14 @@
+# Elastra configuration.  Every physical and experimental parameter lives in this
+# tree; scripts take key=value overrides on the command line.
+defaults:
+  - paths: default
+  - sim: default
+  - mattress: default
+  - trampoline: default
+  - robot@robots.protomotions: protomotions
+  - robot@robots.host: host
+  - criterion: standing
+  - penetration: default
+  - residual@residuals.host: host
+  - residual@residuals.protomotions: protomotions
+  - _self_
