@@ -1,0 +1,19 @@
+# elastra-figures: figures of the evaluation and training results (elastra/figures.py).
+defaults:
+  - config
+  - _self_
+# output directories of elastra-evaluate (each holds summary.json)
+evaluation:
+  host_original: outputs/evaluation/host_original
+  host_residual: outputs/evaluation/host_residual
+  protomotions_original: outputs/evaluation/protomotions_original
+  protomotions_residual: outputs/evaluation/protomotions_residual
+# output directories of elastra-train (each holds history.jsonl and config.yaml)
+training:
+  host: outputs/train/host
+  protomotions: outputs/train/protomotions_curriculum
+# the surface of panel (b) of the HoST figure
+softest_mattress: mattress/a1
+# the training curves pool the episodes of this many consecutive updates per point
+training_window: 20
+out: docs/figures

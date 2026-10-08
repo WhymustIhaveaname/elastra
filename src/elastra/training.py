@@ -3,22 +3,35 @@
     elastra-train                                    # HoST (conf/train/host.yaml)
     elastra-train train=protomotions
     elastra-train train=protomotions_curriculum
-    elastra-train train.updates=2 train.threads=8    # a short test run
+    elastra-train train.updates=2 train.workers=8    # a short test run
 
 The run writes to ``train.out``: ``config.yaml``, ``history.jsonl`` (one line per
 update: reward, finished episodes and successes per surface, PPO statistics),
 ``checkpoints/update_*.pt`` every ``train.checkpoint_every`` updates and the final
 ``policy.pt``, which ``elastra-evaluate policy=...`` reads.
 
-The parallel environments are a fixed number, each on one surface, stepped together
-on one clock (:class:`elastra.sim.Batch`).  An episode starts from a cached state:
+With ``train.resume=true`` (the default) a run whose ``train.out`` already holds
+checkpoints continues from the latest one: networks, optimiser and random number
+generators are restored, ``history.jsonl`` is cut back to that update, and every
+environment restarts (the environment states are not saved, so a resumed run is not
+bit-identical to an uninterrupted one).
 
-* HoST: one of the training initial states of the environment's posture (even environments prone,
-  odd environments supine), lowered onto the surface (dropped onto the trampoline) and run
-  through HoST's 30 unactuated control steps; the episode is the next
+The parallel environments are a fixed number, each on one surface.  They are split
+over ``train.workers`` worker processes (environment ``e`` goes to worker
+``e mod workers``); every worker steps its environments on one clock
+(:class:`elastra.sim.Batch`), and the workers meet once per control step.  Every
+environment draws its initial states from its own random number generator, seeded with
+the training seed, its index and the update at which its curriculum stage (or the
+resumed run) started, so a run does not depend on the number of workers.
+An episode starts from a cached state:
+
+* HoST: one of the training initial states of the environment's posture (even environments
+  prone, odd environments supine), lowered onto the surface (dropped onto the trampoline)
+  and run through HoST's 30 unactuated control steps; the episode is the next
   ``horizon_control_steps`` steps, with HoST's action history starting at zero;
 * ProtoMotions: one of the training initial states, settled on the surface under a gravity
-  ramp (as in the evaluation); the episode lasts as long as the reference clip of that initial state.
+  ramp (as in the evaluation); the episode lasts as long as the reference clip of that
+  initial state.
 
 The initial state is drawn uniformly at every reset.  An episode ends when the robot
 leaves the task area (a termination) or reaches its horizon (a truncation, whose
@@ -38,6 +51,7 @@ an optional stop after an epoch whose mean approximate KL divergence exceeds
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -69,7 +83,9 @@ def environment_surfaces(train: DictConfig, seed: int) -> list[str]:
         for _ in range(int(count))
     ]
     if len(labels) != int(train.num_envs):
-        raise ValueError(f"surfaces add up to {len(labels)} environments, num_envs is {train.num_envs}")
+        raise ValueError(
+            f"surfaces add up to {len(labels)} environments, num_envs is {train.num_envs}"
+        )
     order = np.random.default_rng([seed, 1]).permutation(len(labels))
     return [labels[k] for k in order]
 
@@ -96,8 +112,72 @@ def stage_starts(train: DictConfig) -> set[int]:
 # --------------------------------------------------------------------------- #
 # environments
 # --------------------------------------------------------------------------- #
+def scenes_for(cfg: DictConfig, robot: str, labels, scenes: dict[str, Scene]) -> None:
+    for label in sorted(set(labels)):
+        if label not in scenes:
+            scenes[label] = build_scene(cfg, robot, label)
+
+
+def initial_state_rows(cfg: DictConfig, robot: str) -> np.ndarray:
+    """Indices of the training initial states in ``data/initial_states/<robot>.npz``."""
+
+    data = config.data_dir(cfg) / "initial_states"
+    if robot == "host":
+        states = np.load(data / "host.npz")
+        return np.flatnonzero(states["split"] == str(cfg.train.initial_states))
+    states = np.load(data / "protomotions.npz")
+    return np.arange(len(states[f"{cfg.train.initial_states}_qpos"]))
+
+
+def warm_up(
+    cfg: DictConfig, robot: str, jobs: Sequence[tuple[str, int]], scenes: dict[str, Scene]
+) -> list:
+    """Episode start states for (surface, initial state) pairs.
+
+    HoST: the initial state lowered onto the surface (dropped onto the trampoline) and run
+    through HoST's unactuated control steps; an entry is (full physics state, torso
+    height).  ProtoMotions: the initial state settled on the surface under a gravity
+    ramp, as in the evaluation; an entry is the full physics state.
+    """
+
+    if not jobs:
+        return []
+    scenes_for(cfg, robot, [label for label, _ in jobs], scenes)
+    job_scenes = [scenes[label] for label, _ in jobs]
+    data = config.data_dir(cfg) / "initial_states"
+    if robot == "protomotions":
+        states = np.load(data / "protomotions.npz")
+        poses = states[f"{cfg.train.initial_states}_qpos"]
+        return protomotions_settle(cfg, job_scenes, [poses[row] for _, row in jobs])
+    host = cfg.robots.host
+    states = np.load(data / "host.npz")
+    key = [
+        "qpos_initial" if Surface.parse(label).kind == "trampoline" else "qpos_lowered"
+        for label, _ in jobs
+    ]
+    batch = Batch(
+        job_scenes,
+        physics_dt=float(cfg.sim.physics_dt_s),
+        control_dt=float(cfg.sim.control_dt_s),
+        criterion=cfg.criterion,
+    )
+    try:
+        batch.set_robot_qpos([states[k][row] for k, (_, row) in zip(key, jobs)])
+        zero = np.zeros((len(jobs), int(host.num_actions)))
+        for _ in range(int(host.unactuated_control_steps)):
+            batch.step(zero)
+        if batch.diverged().any():
+            raise FloatingPointError("a warm-up diverged")
+        torso = batch.robot_state()["torso_z"]
+        return [(state, float(z)) for state, z in zip(batch.states(), torso)]
+    finally:
+        batch.close()
+
+
 class TrainingEnvs:
-    """Episode state shared by the two controllers."""
+    """Episode state shared by the two controllers, for the environments ``env_ids`` (indices
+    into all environments of the run) on ``surfaces``; ``cache`` holds the start states
+    of every (surface, initial state) pair (:func:`warm_up`)."""
 
     robot: str
 
@@ -105,25 +185,27 @@ class TrainingEnvs:
         self,
         cfg: DictConfig,
         surfaces: Sequence[str],
-        rng: np.random.Generator,
+        env_ids: Sequence[int],
+        stage: int,
         scenes: dict[str, Scene],
+        cache: dict,
     ) -> None:
         self.cfg = cfg
         self.train = cfg.train
         self.n = len(surfaces)
+        self.env_ids = np.asarray(env_ids, dtype=np.int64)
         self.surfaces = [Surface.parse(s) for s in surfaces]
         self.labels = [s.label for s in self.surfaces]
-        self.rng = rng
-        for label in sorted(set(self.labels)):
-            if label not in scenes:
-                scenes[label] = build_scene(cfg, self.robot, label)
+        self.cache = cache
+        seed = int(self.train.seed)
+        self.reset_rngs = [np.random.default_rng([seed, 2, int(stage), int(e)]) for e in env_ids]
+        scenes_for(cfg, self.robot, self.labels, scenes)
         self.scenes = [scenes[label] for label in self.labels]
         self.batch = Batch(
             self.scenes,
             physics_dt=float(cfg.sim.physics_dt_s),
             control_dt=float(cfg.sim.control_dt_s),
             criterion=cfg.criterion,
-            threads=int(self.train.threads),
             task_area_every_physics_step=bool(self.train.task_area_every_physics_step),
         )
         self.heights = [success.SurfaceHeight(scene) for scene in self.scenes]
@@ -208,6 +290,22 @@ class TrainingEnvs:
             "success": self.completed & ~self.exited_first,
         }
 
+    def advance(self, raw_action: np.ndarray) -> dict[str, np.ndarray]:
+        """One control step of the training loop: :meth:`step`, the observation after it
+        (``next_obs``, which bootstraps truncated episodes), the return of every episode so
+        far, and the observation after the finished episodes restart (``obs``)."""
+
+        result = self.step(raw_action)
+        result["next_obs"] = self.observation()
+        result["episode_return"] = self.episode_return.copy()
+        ended = np.flatnonzero(result["terminated"] | result["truncated"])
+        if ended.size:
+            self.reset(ended)
+            result["obs"] = self.observation()
+        else:
+            result["obs"] = result["next_obs"]
+        return result
+
 
 class HostEnvs(TrainingEnvs):
     robot = "host"
@@ -216,74 +314,38 @@ class HostEnvs(TrainingEnvs):
         self,
         cfg: DictConfig,
         surfaces: Sequence[str],
-        rng: np.random.Generator,
+        env_ids: Sequence[int],
+        stage: int,
         scenes: dict[str, Scene],
         cache: dict,
-        seed: int,
     ) -> None:
-        super().__init__(cfg, surfaces, rng, scenes)
+        super().__init__(cfg, surfaces, env_ids, stage, scenes, cache)
         host = cfg.robots.host
         self.residual_cfg = cfg.residuals.host
         self.bound = float(self.residual_cfg.bound_action_units)
-        self.postures = ["prone" if env % 2 == 0 else "supine" for env in range(self.n)]
+        self.postures = ["prone" if env % 2 == 0 else "supine" for env in self.env_ids.tolist()]
         self.controller = HostController(cfg, assets_dir(cfg), self.postures)
         self.noise = [
-            np.random.default_rng(seed + int(host.observation_noise_seed_offset) + env)
-            for env in range(self.n)
+            np.random.default_rng(
+                int(self.train.seed) + int(host.observation_noise_seed_offset) + env
+            )
+            for env in self.env_ids.tolist()
         ]
         # every actuated step counts as "after the unactuated opening" for HoST
         self.actuated = np.full(self.n, int(host.unactuated_control_steps) + 1, dtype=np.int64)
         self.horizon[:] = int(self.train.horizon_control_steps)
         self.features = residual_module.surface_features(cfg, self.residual_cfg, self.surfaces)
-        self.cache = cache
-        self._fill_cache()
         states = np.load(config.data_dir(cfg) / "initial_states" / "host.npz")
         chosen = states["split"] == str(self.train.initial_states)
         self.by_posture = {
             p: np.flatnonzero(chosen & (states["posture"] == p)) for p in ("prone", "supine")
         }
 
-    def _fill_cache(self) -> None:
-        """Warm-up states (after HoST's unactuated steps) for every (surface, initial state)."""
-
-        cfg = self.cfg
-        host = cfg.robots.host
-        states = np.load(config.data_dir(cfg) / "initial_states" / "host.npz")
-        rows = np.flatnonzero(states["split"] == str(self.train.initial_states))
-        missing = [label for label in sorted(set(self.labels)) if label not in self.cache]
-        if not missing:
-            return
-        jobs = [(label, int(row)) for label in missing for row in rows]
-        scenes = [self.scenes[self.labels.index(label)] for label, _ in jobs]
-        key = [
-            "qpos_initial" if Surface.parse(label).kind == "trampoline" else "qpos_lowered"
-            for label, _ in jobs
-        ]
-        batch = Batch(
-            scenes,
-            physics_dt=float(cfg.sim.physics_dt_s),
-            control_dt=float(cfg.sim.control_dt_s),
-            criterion=cfg.criterion,
-            threads=int(self.train.threads),
-        )
-        try:
-            batch.set_robot_qpos([states[k][row] for k, (_, row) in zip(key, jobs)])
-            zero = np.zeros((len(jobs), int(host.num_actions)))
-            for _ in range(int(host.unactuated_control_steps)):
-                batch.step(zero)
-            if batch.diverged().any():
-                raise FloatingPointError("a warm-up diverged")
-            torso = batch.robot_state()["torso_z"]
-            for (label, row), state, z in zip(jobs, batch.states(), torso):
-                self.cache.setdefault(label, {})[row] = (state, float(z))
-        finally:
-            batch.close()
-
     def _restart(self, env_ids: np.ndarray) -> None:
         picked = []
         for env in env_ids.tolist():
             pool = self.by_posture[self.postures[env]]
-            picked.append(int(pool[self.rng.integers(0, pool.size)]))
+            picked.append(int(pool[self.reset_rngs[env].integers(0, pool.size)]))
         entries = [self.cache[self.labels[env]][row] for env, row in zip(env_ids, picked)]
         self.batch.restore(env_ids, [state for state, _ in entries])
         self.initial_torso_z[env_ids] = [z for _, z in entries]
@@ -321,12 +383,12 @@ class ProtomotionsEnvs(TrainingEnvs):
         self,
         cfg: DictConfig,
         surfaces: Sequence[str],
-        rng: np.random.Generator,
+        env_ids: Sequence[int],
+        stage: int,
         scenes: dict[str, Scene],
         cache: dict,
-        seed: int,
     ) -> None:
-        super().__init__(cfg, surfaces, rng, scenes)
+        super().__init__(cfg, surfaces, env_ids, stage, scenes, cache)
         self.residual_cfg = cfg.residuals.protomotions
         self.bound = float(self.residual_cfg.bound_rad)
         assets = assets_dir(cfg)
@@ -341,25 +403,12 @@ class ProtomotionsEnvs(TrainingEnvs):
         self.clip = np.zeros(self.n, dtype=np.int64)
         self.heading = np.zeros((self.n, 4))
         self.previous = np.zeros((self.n, len(self.scenes[0].robot_dof)), dtype=np.float32)
-        self.cache = cache
-        self._fill_cache()
-
-    def _fill_cache(self) -> None:
-        """Settled states for every (surface, training initial state)."""
-
-        missing = [label for label in sorted(set(self.labels)) if label not in self.cache]
-        if not missing:
-            return
-        jobs = [(label, pose) for label in missing for pose in range(len(self.poses))]
-        scenes = [self.scenes[self.labels.index(label)] for label, _ in jobs]
-        settled = protomotions_settle(
-            self.cfg, scenes, [self.poses[p] for _, p in jobs], threads=int(self.train.threads)
-        )
-        for (label, pose), state in zip(jobs, settled):
-            self.cache.setdefault(label, {})[pose] = state
 
     def _restart(self, env_ids: np.ndarray) -> None:
-        poses = self.rng.integers(0, len(self.poses), size=env_ids.size)
+        poses = np.asarray(
+            [self.reset_rngs[env].integers(0, len(self.poses)) for env in env_ids.tolist()],
+            dtype=np.int64,
+        )
         self.batch.restore(
             env_ids, [self.cache[self.labels[env]][int(p)] for env, p in zip(env_ids, poses)]
         )
@@ -390,6 +439,130 @@ class ProtomotionsEnvs(TrainingEnvs):
 
 
 ENVS = {"host": HostEnvs, "protomotions": ProtomotionsEnvs}
+
+
+# --------------------------------------------------------------------------- #
+# worker processes
+# --------------------------------------------------------------------------- #
+def _serve(conn, cfg_container: dict) -> None:
+    """A worker process: answers ``(command, payload)`` messages until ``close``."""
+
+    cfg = OmegaConf.create(cfg_container)
+    robot = str(cfg.train.controller)
+    scenes: dict[str, Scene] = {}
+    envs: TrainingEnvs | None = None
+    while True:
+        command, payload = conn.recv()
+        try:
+            if command == "close":
+                if envs is not None:
+                    envs.close()
+                conn.send(("ok", None))
+                return
+            if command == "warm_up":
+                result = warm_up(cfg, robot, payload, scenes)
+            elif command == "start":
+                if envs is not None:
+                    envs.close()
+                envs = ENVS[robot](cfg, scenes=scenes, **payload)
+                envs.reset()
+                result = envs.observation()
+            elif command == "advance":
+                result = envs.advance(payload)
+            else:
+                raise ValueError(f"unknown command {command}")
+            conn.send(("ok", result))
+        except Exception:
+            import traceback
+
+            conn.send(("error", traceback.format_exc()))
+
+
+class ShardedEnvs:
+    """All environments of a run, split over worker processes (environment ``e`` on worker
+    ``e mod workers``).  The start states are computed once, spread over the workers, and
+    kept for later curriculum stages."""
+
+    def __init__(self, cfg: DictConfig, workers: int) -> None:
+        import multiprocessing as mp
+
+        self.cfg = cfg
+        self.robot = str(cfg.train.controller)
+        self.num_envs = int(cfg.train.num_envs)
+        self.workers = max(1, min(int(workers), self.num_envs))
+        self.shards = [np.arange(w, self.num_envs, self.workers) for w in range(self.workers)]
+        self.rows = initial_state_rows(cfg, self.robot)
+        self.cache: dict = {}
+        for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
+            os.environ.setdefault(name, "1")
+        context = mp.get_context("spawn")
+        container = OmegaConf.to_container(cfg, resolve=True)
+        self.conns, self.processes = [], []
+        for _ in range(self.workers):
+            parent, child = context.Pipe()
+            process = context.Process(target=_serve, args=(child, container), daemon=True)
+            process.start()
+            child.close()
+            self.conns.append(parent)
+            self.processes.append(process)
+
+    def _call(self, messages: list[tuple[str, object]]) -> list:
+        for conn, message in zip(self.conns, messages):
+            conn.send(message)
+        replies = [conn.recv() for conn in self.conns]
+        errors = [payload for status, payload in replies if status == "error"]
+        if errors:
+            raise RuntimeError("a training worker failed:\n" + errors[0])
+        return [payload for _, payload in replies]
+
+    def start(self, surfaces: Sequence[str], stage: int) -> np.ndarray:
+        """Put every environment on its surface and start its first episode; returns the
+        observations."""
+
+        missing = [
+            (label, int(row))
+            for label in sorted(set(surfaces))
+            if label not in self.cache
+            for row in self.rows
+        ]
+        parts = [missing[w :: self.workers] for w in range(self.workers)]
+        for part, states in zip(parts, self._call([("warm_up", part) for part in parts])):
+            for (label, row), state in zip(part, states):
+                self.cache.setdefault(label, {})[row] = state
+        messages = []
+        for ids in self.shards:
+            labels = [surfaces[e] for e in ids.tolist()]
+            payload = {
+                "surfaces": labels,
+                "env_ids": ids,
+                "stage": int(stage),
+                "cache": {label: self.cache[label] for label in set(labels)},
+            }
+            messages.append(("start", payload))
+        return self._gather(self._call(messages))
+
+    def advance(self, raw_action: np.ndarray) -> dict[str, np.ndarray]:
+        replies = self._call([("advance", raw_action[ids]) for ids in self.shards])
+        return {key: self._gather([reply[key] for reply in replies]) for key in replies[0]}
+
+    def _gather(self, parts: list[np.ndarray]) -> np.ndarray:
+        first = np.asarray(parts[0])
+        out = np.zeros((self.num_envs,) + first.shape[1:], dtype=first.dtype)
+        for ids, part in zip(self.shards, parts):
+            out[ids] = part
+        return out
+
+    def close(self) -> None:
+        for conn in self.conns:
+            try:
+                conn.send(("close", None))
+                conn.recv()
+            except (BrokenPipeError, EOFError, OSError):
+                pass
+        for process in self.processes:
+            process.join(timeout=30)
+            if process.is_alive():
+                process.terminate()
 
 
 # --------------------------------------------------------------------------- #
@@ -491,30 +664,72 @@ def _policy_blob(cfg: DictConfig, actor, critic, obs_dim: int, update: int) -> d
     }
 
 
+def latest_checkpoint(out: Path) -> Path | None:
+    paths = sorted((out / "checkpoints").glob("update_*.pt"))
+    return paths[-1] if paths else None
+
+
+def _cut_history(path: Path, update: int) -> None:
+    """Keep the history lines up to ``update`` (the lines a resumed run will write again
+    are dropped)."""
+
+    if not path.is_file():
+        return
+    lines = [line for line in path.read_text().splitlines() if line.strip()]
+    kept = [line for line in lines if int(json.loads(line)["update"]) <= update]
+    path.write_text("".join(line + "\n" for line in kept))
+
+
 def train(cfg: DictConfig) -> Path:
+    import torch
+
+    tcfg = cfg.train
+    seed = int(tcfg.seed)
+    out = config.repo_path(tcfg.out)
+    checkpoint = latest_checkpoint(out)
+    if checkpoint is not None and not bool(tcfg.resume):
+        raise FileExistsError(
+            f"{out} already holds checkpoints: set train.resume=true to continue that run "
+            "or choose another train.out"
+        )
+    (out / "checkpoints").mkdir(parents=True, exist_ok=True)
+    (out / "config.yaml").write_text(OmegaConf.to_yaml(cfg))
+    torch.set_num_threads(int(tcfg.torch_threads))
+    torch.manual_seed(seed)
+    generator = torch.Generator().manual_seed(seed + 1)
+    blob = None
+    update = 0
+    if checkpoint is not None:
+        blob = torch.load(checkpoint, map_location="cpu", weights_only=True)
+        update = int(blob["updates"])
+        _cut_history(out / "history.jsonl", update)
+        print(f"resuming from {checkpoint} (update {update})", flush=True)
+    else:
+        (out / "history.jsonl").write_text("")
+    envs = ShardedEnvs(cfg, int(tcfg.workers))
+    try:
+        return _train_loop(cfg, envs, update, blob, generator, out)
+    finally:
+        envs.close()
+
+
+def _train_loop(
+    cfg: DictConfig, envs: ShardedEnvs, update: int, blob: dict | None, generator, out: Path
+) -> Path:
+    """PPO from ``update`` on (from the checkpoint ``blob`` if there is one)."""
+
     import torch
     from torch.distributions import Normal
 
     tcfg = cfg.train
     robot = str(tcfg.controller)
     seed = int(tcfg.seed)
-    out = config.repo_path(tcfg.out)
-    (out / "checkpoints").mkdir(parents=True, exist_ok=True)
-    (out / "config.yaml").write_text(OmegaConf.to_yaml(cfg))
-    torch.set_num_threads(int(tcfg.torch_threads))
-    torch.manual_seed(seed)
-    generator = torch.Generator().manual_seed(seed + 1)
-    rng = np.random.default_rng(seed)
     env_surfaces = environment_surfaces(tcfg, seed)
     res = cfg.residuals[robot]
     action_dim = int(cfg.robots.host.num_actions) if robot == "host" else 29
-
-    scenes: dict[str, Scene] = {}
-    cache: dict = {}
-    update = 0
-    envs = ENVS[robot](cfg, stage_surfaces(tcfg, env_surfaces, update), rng, scenes, cache, seed)
-    envs.reset()
-    obs = envs.observation()
+    first_update = update
+    labels = stage_surfaces(tcfg, env_surfaces, update)
+    obs = envs.start(labels, update)
     actor, critic = residual_module.build_actor_critic(
         obs.shape[1],
         action_dim,
@@ -526,18 +741,20 @@ def train(cfg: DictConfig) -> Path:
     optimizer = torch.optim.Adam(
         list(actor.parameters()) + list(critic.parameters()), lr=float(ppo.learning_rate)
     )
+    if blob is not None:
+        actor.load_state_dict(blob["actor"])
+        critic.load_state_dict(blob["critic"])
+        optimizer.load_state_dict(blob["optimizer"])
+        torch.set_rng_state(blob["rng"]["torch"])
+        generator.set_state(blob["rng"]["generator"])
     history = (out / "history.jsonl").open("a")
     steps = int(tcfg.rollout_steps)
     gamma = float(ppo.gamma)
     try:
         while update < int(tcfg.updates):
-            if update in stage_starts(tcfg) and update > 0:
-                envs.close()
-                envs = ENVS[robot](
-                    cfg, stage_surfaces(tcfg, env_surfaces, update), rng, scenes, cache, seed
-                )
-                envs.reset()
-                obs = envs.observation()
+            if update in stage_starts(tcfg) and update > first_update:
+                labels = stage_surfaces(tcfg, env_surfaces, update)
+                obs = envs.start(labels, update)
             started = time.time()
             buffer = {k: [] for k in ("obs", "actions", "logp", "values", "rewards", "dones")}
             finished = []
@@ -549,13 +766,12 @@ def train(cfg: DictConfig) -> Path:
                     raw = dist.sample()
                     logp = dist.log_prob(raw).sum(-1)
                     value = critic(x)
-                result = envs.step(raw.numpy().astype(np.float64))
+                result = envs.advance(raw.numpy().astype(np.float64))
                 reward = result["reward"].copy()
-                next_obs = envs.observation()
                 cut = np.flatnonzero(result["truncated"])
                 if cut.size:
                     with torch.no_grad():
-                        boot = critic(torch.as_tensor(next_obs[cut], dtype=torch.float32))
+                        boot = critic(torch.as_tensor(result["next_obs"][cut], dtype=torch.float32))
                     reward[cut] += gamma * boot.numpy().astype(np.float64)
                 done = result["terminated"] | result["truncated"]
                 buffer["obs"].append(obs)
@@ -568,17 +784,13 @@ def train(cfg: DictConfig) -> Path:
                 for env in ended.tolist():
                     finished.append(
                         {
-                            "surface": envs.labels[env],
+                            "surface": labels[env],
                             "success": bool(result["success"][env]),
                             "exited": bool(result["terminated"][env]),
-                            "return": float(envs.episode_return[env]),
+                            "return": float(result["episode_return"][env]),
                         }
                     )
-                if ended.size:
-                    envs.reset(ended)
-                    obs = envs.observation()
-                else:
-                    obs = next_obs
+                obs = result["obs"]
             with torch.no_grad():
                 last_values = critic(torch.as_tensor(obs, dtype=torch.float32)).numpy()
             rewards = np.asarray(buffer["rewards"])
@@ -625,13 +837,18 @@ def train(cfg: DictConfig) -> Path:
             if update % int(tcfg.checkpoint_every) == 0 or update == int(tcfg.updates):
                 blob = _policy_blob(cfg, actor, critic, obs.shape[1], update)
                 blob["optimizer"] = optimizer.state_dict()
-                torch.save(blob, out / "checkpoints" / f"update_{update:06d}.pt")
+                blob["rng"] = {
+                    "torch": torch.get_rng_state(),
+                    "generator": generator.get_state(),
+                }
+                path = out / "checkpoints" / f"update_{update:06d}.pt"
+                torch.save(blob, path.with_suffix(".part"))
+                os.replace(path.with_suffix(".part"), path)
         final = out / "policy.pt"
         torch.save(_policy_blob(cfg, actor, critic, obs.shape[1], update), final)
         return final
     finally:
         history.close()
-        envs.close()
 
 
 def main(argv: list[str] | None = None) -> int:

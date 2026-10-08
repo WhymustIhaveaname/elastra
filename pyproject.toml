@@ -15,6 +15,7 @@ dependencies = [
     "hydra-core==1.3.2",
     "omegaconf==2.3.1",
     "pyyaml==6.0.3",
+    "matplotlib==3.11.2",
 ]
 
 [project.scripts]
@@ -23,6 +24,7 @@ elastra-evaluate = "elastra.evaluation:main"
 elastra-train = "elastra.training:main"
 elastra-load-response = "elastra.load_response:main"
 elastra-indentation = "elastra.indentation:main"
+elastra-figures = "elastra.figures:main"
 elastra-make-host-initial-states = "elastra.initial_states:main"
 
 [dependency-groups]

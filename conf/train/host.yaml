@@ -51,7 +51,11 @@ reward:
 # leaving the task area is checked once per control step in training (every physics
 # step in the evaluation)
 task_area_every_physics_step: false
-threads: 32
+# worker processes that step the environments (environment e on worker e mod workers)
+workers: 32
+# threads of the PPO update
 torch_threads: 2
 checkpoint_every: 10
+# continue from the latest checkpoint in `out` if there is one (every environment restarts)
+resume: true
 out: outputs/train/host

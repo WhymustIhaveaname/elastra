@@ -178,7 +178,8 @@ def main(argv: list[str] | None = None) -> int:
             results.append(row)
             if stable:
                 print(
-                    f"{surface.label} dt={dt:.8f}: static {1000 * row['static_deflection_m']:.3f} mm, "
+                    f"{surface.label} dt={dt:.8f}: "
+                    f"static {1000 * row['static_deflection_m']:.3f} mm, "
                     f"drop peak {1000 * row['drop_peak_deflection_m']:.3f} mm at "
                     f"{row['drop_peak_time_s']:.3f} s",
                     flush=True,

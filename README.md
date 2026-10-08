@@ -54,14 +54,16 @@ A trial with more than 5 mm for 10 consecutive control steps while the robot is 
 ## Evaluate
 
 ```bash
-uv run elastra-evaluate controller=host policy=checkpoints/host_residual.pt
-uv run elastra-evaluate controller=host policy=null          # HoST alone
-uv run elastra-evaluate controller=protomotions policy=checkpoints/protomotions_residual.pt
-uv run elastra-evaluate controller=protomotions policy=null
+uv run elastra-evaluate controller=host policy=checkpoints/host_residual.pt out=outputs/evaluation/host_residual
+uv run elastra-evaluate controller=host policy=null out=outputs/evaluation/host_original    # the original HoST controller
+uv run elastra-evaluate controller=protomotions policy=checkpoints/protomotions_residual.pt out=outputs/evaluation/protomotions_residual
+uv run elastra-evaluate controller=protomotions policy=null out=outputs/evaluation/protomotions_original
+uv run elastra-figures            # figures of these four runs and of the training runs
 ```
 
 HoST runs its 96 test initial states (48 prone, 48 supine) on every surface, ProtoMotions its 40 test initial states (`data/README.md`).
 Each run writes `summary.md` (per surface: successes, successes without sustained penetration, never stood / stood but not completed, penetration depths), `summary.json`, `cells.json` (one row per trial) and `traces.npz` to `out` (`outputs/evaluation/<controller>` by default).
+`elastra-figures` reads the four directories above and the training runs (`conf/figures.yaml`) and writes the figures of [docs/results.md](docs/results.md) to `docs/figures/`.
 `workers` sets the number of worker processes.
 Any configuration value can be overridden on the command line, for example the physics step `sim.physics_dt_s=0.0003125` or the grid `mattress=refined trampoline=refined sim.physics_dt_s=0.00015625`.
 
@@ -70,12 +72,14 @@ Any configuration value can be overridden on the command line, for example the p
 ```bash
 uv run elastra-train                                   # HoST, conf/train/host.yaml
 uv run elastra-train train=protomotions                # ProtoMotions
-uv run elastra-train train=protomotions_curriculum     # ProtoMotions, with soft beds after update 500
+uv run elastra-train train=protomotions_curriculum     # ProtoMotions, mattresses a1, a2, a4 from update 500
 ```
 
 PPO on 256 environments; the training configurations (surfaces of the parallel environments, curriculum, PPO and reward settings) are in `conf/train/`.
-One update steps 256 environments for 64 control steps (524288 physics steps); `train.threads` sets the number of threads that step them.
+One update steps 256 environments for 64 control steps (524288 physics steps); `train.workers` sets the number of worker processes that step them (the result does not depend on it).
+With 48 workers on an Intel Xeon 6728P an update takes about 21 s (HoST) or 16 s (ProtoMotions), and the 1000 updates of a run take 5.8 h or 4.5 h.
 The run writes `history.jsonl`, checkpoints and the final `policy.pt` to `train.out`; evaluate it with `policy=<path>/policy.pt`.
+The same command continues an interrupted run from its latest checkpoint (`train.resume`).
 
 ## Load response
 
@@ -96,9 +100,16 @@ The loading pad of EN 1957 is pressed into the mattress, and the stiffness scale
 The fitted bed (s = 4.10, between beds `a4` and `a8`) over-predicts the held-out loads at 60 to 100 mm by 5.9 % to 10.8 %, and by up to 22.9 % with the pad on a cell centre or on the 0.05 m grid ([docs/mattress_calibration.md](docs/mattress_calibration.md)).
 The mattress has no nonlinear compression term.
 
+## Results
+
+The policies in `checkpoints/` are the HoST run (`conf/train/host.yaml`) and the ProtoMotions run with the curriculum (`conf/train/protomotions_curriculum.yaml`) of the commands above.
+[docs/results.md](docs/results.md) reports their training and their evaluation.
+With its residual policy HoST succeeds in 678 of 960 test trials (423 with the original controller, 720 with the earlier residual policy of [docs/validation.md](docs/validation.md)), and the ProtoMotions tracker in 82 of 400 (62 with the original controller, 143 with the earlier residual policy).
+The same page compares the training with the earlier one: the two agree item by item except for their random numbers and three deliberate changes (a linear mattress, rigid ground of fixed boxes, and for ProtoMotions a task-area rule on bounding boxes), and the gaps lie within the spread between training seeds (a second seed of the HoST curriculum stage gives 735 of 960; ProtoMotions runs of 500 updates give 95 to 128 of 400).
+
 ## Validation
 
-[docs/validation.md](docs/validation.md): success counts of the released policies, penetration depth on every surface, and the dependence of the load response and of the success counts on the physics step and the grid spacing.
+[docs/validation.md](docs/validation.md): success counts of the earlier residual policies (released in commit `303f0c0`), penetration depth on every surface, and the dependence of the load response and of the success counts on the physics step and the grid spacing.
 [docs/mattress_calibration.md](docs/mattress_calibration.md): the mattress against a measured load-deflection curve.
 
 ## Repository layout
@@ -113,10 +124,11 @@ src/elastra/     the package
   residual.py, training.py                residual policy and PPO training
   evaluation.py, load_response.py         the evaluation and load-response commands
   indentation.py                          the EN 1957 loading pad and the mattress calibration
+  figures.py                              the figures of docs/results.md
   assets.py, initial_states.py            asset download, HoST initial states
 data/            initial states, a measured mattress load-deflection curve (data/README.md)
-checkpoints/     the trained residual policies (Git LFS)
-docs/            validation and calibration results
+checkpoints/     the trained residual policies (Git LFS, docs/results.md)
+docs/            results, validation and calibration (figures in docs/figures, Git LFS)
 tests/           unit tests
 ```
 

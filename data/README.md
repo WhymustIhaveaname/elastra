@@ -26,7 +26,7 @@ Before an episode each pose is settled on the surface under a gravity ramp (`rob
   Out of 2400 candidates, those that ended standing, outside the joint ranges, or with a sustained ground penetration were dropped, and near duplicates (joint RMS distance below 0.15 rad, also against the training poses) were merged; the 40 states were fixed before any policy was run on them.
   The clip is the one whose starting root orientation is closest.
   `test_source_id` is `fall_00` ... `fall_39`.
-* `train_*`, 39 states, the residual's training set: lying poses from the HumanUP pose pool (https://github.com/RunpeiDong/HumanUP, Apache-2.0), mapped to the 29-DoF G1 and placed on rigid ground with a horizontal offset, a yaw rotation and small joint offsets.
+* `train_*`, 39 states, the residual's training set: lying poses from the HumanUP pose pool (https://github.com/RunpeiDong/HumanUP, Apache-2.0), mapped to the 29-DoF G1 and placed 2.8 to 4.0 cm above rigid ground (lowest collision geom) with a horizontal offset, a yaw rotation and small joint offsets; the settle ramp lowers them onto the surface.
   `train_source_id` names the HumanUP pose and the placement.
 
 ## `load_deflection/vlaovic2024_pur_100_cycles.csv`: a measured mattress load-deflection curve

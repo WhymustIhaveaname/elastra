@@ -2,16 +2,26 @@
 
 This page reports three checks of the surface models and of the evaluation, all computed with the code and configuration of this repository:
 
-1. the success counts of the two released residual policies and of the original controllers on every surface, with the penetration depth measured in every trial;
+1. the success counts of the earlier residual policies (below) and of the original controllers on every surface, with the penetration depth measured in every trial;
 2. the load response of the surfaces and the success counts when the physics step is halved and quartered;
 3. the load response and the success counts when the grid spacing of the mattress and of the trampoline is halved.
 
 No policy was retrained for any of these runs.
+
+The residual policies on this page are the earlier ones, released in commit `303f0c0` as `checkpoints/host_residual.pt` and `checkpoints/protomotions_residual.pt`.
+They were trained with an earlier implementation of the training code, with the surface counts of the training configurations of this repository:
+the HoST residual for 500 PPO updates without the position observation, then for 500 more updates with the position observation added (the weights of the new inputs starting at zero) and mattresses `a16`, `a32`, `a64` replaced by `a1`, `a2`, `a4`;
+the ProtoMotions residual for 500 updates without that replacement.
+That training differs from the one of this repository in the mattress (a densification term and an extra load per cell), in the rigid ground (cells held by equality constraints) and, for ProtoMotions, in the task-area rule (geom centres); [results.md](results.md#comparison-with-the-earlier-training) lists the differences and measures their effect.
+In the tables, "+ residual" means these earlier policies.
+The files in `checkpoints/` are now the policies trained with the code of this repository; their results are in [results.md](results.md).
+`git checkout 303f0c0 -- checkpoints/` restores the earlier policies (`git checkout HEAD -- checkpoints/` returns to the current ones).
+
 The mattress is compared with a measured load-deflection curve in [mattress_calibration.md](mattress_calibration.md).
 
 ## Setup
 
-* Controllers: HoST alone and with `checkpoints/host_residual.pt`; the ProtoMotions tracker alone and with `checkpoints/protomotions_residual.pt`.
+* Controllers: the original HoST controller alone and with the earlier HoST residual policy; the original ProtoMotions tracker alone and with the earlier ProtoMotions residual policy.
 * Initial states (`data/README.md`): HoST runs its 96 test states (48 prone, 48 supine) on every surface, ProtoMotions its 40 test initial states.
 * Surfaces: mattresses `a1` ... `a64`, trampolines `a1`, `a2`, rigid ground.
 * Success: the pelvis is at least 0.7 m above the support surface under the robot's lowest collision point and the pelvis z axis has a world-z component of at least 0.9, without interruption for 1 s, before the robot leaves the task area (`conf/criterion/standing.yaml`).
@@ -22,7 +32,7 @@ The mattress is compared with a measured load-deflection curve in [mattress_cali
   A run is reproduced bit for bit on the same machine; on another CPU model the last bits of the trajectories differ and a few outcomes can change.
   Of five evaluation runs repeated on the AMD machine, four gave the same counts (HoST on mattress `a2` and on rigid ground, HoST + residual on trampoline `a1`, ProtoMotions + residual on rigid ground, ProtoMotions on trampoline `a2` at 0.3125 ms) and one gave 12 instead of 14 successes (ProtoMotions + residual on mattress `a8`).
 
-Commands (any `out=` directory):
+Commands (any `out=` directory; with the earlier policies restored in `checkpoints/`, see above):
 
 ```bash
 # success and penetration, default discretisation
@@ -91,7 +101,7 @@ The ProtoMotions G1 has capsule feet of radius 8 to 10 mm; it has two trials wit
 
 One ProtoMotions test initial state (`fall_03`) slides 0.13 m on rigid ground while it is settled under the gravity ramp and starts 1 cm outside the task area; it is a failure for both ProtoMotions rows on rigid ground.
 
-The HoST outcome classes on the soft mattresses are the three classes of the paper's HoST figure: on mattress `a1` the original controller never stands in 65 trials and stands without completing the hold in 31; with the residual the counts are 76 and 20.
+The HoST outcome classes on the soft mattresses are the three classes of the paper's HoST figure: on mattress `a1` the original controller never stands in 65 trials and stands without completing the hold in 31; with the earlier residual policy the counts are 76 and 20.
 
 ## 2. Physics step
 
