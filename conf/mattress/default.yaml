@@ -8,6 +8,8 @@
 #
 # One bed = five numbers k, b, c, d, m, each set independently.  Override any of
 # them on the command line, e.g.  mattress.beds.a4.c_n_s_per_m=8.0
+# The cell spring is linear; there is no nonlinear compression term
+# (docs/mattress_calibration.md compares the bed with a measured load-deflection curve).
 #
 # The beds a1 ... a64 are the seven beds of the paper; the names are labels.  a1 is
 # a soft foam: its k and b were fitted to force-indentation curves of a rigid flat

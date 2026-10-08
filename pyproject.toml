@@ -22,6 +22,7 @@ elastra-download-assets = "elastra.assets:main"
 elastra-evaluate = "elastra.evaluation:main"
 elastra-train = "elastra.training:main"
 elastra-load-response = "elastra.load_response:main"
+elastra-indentation = "elastra.indentation:main"
 elastra-make-host-initial-states = "elastra.initial_states:main"
 
 [dependency-groups]

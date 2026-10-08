@@ -7,6 +7,7 @@ This page reports three checks of the surface models and of the evaluation, all 
 3. the load response and the success counts when the grid spacing of the mattress and of the trampoline is halved.
 
 No policy was retrained for any of these runs.
+The mattress is compared with a measured load-deflection curve in [mattress_calibration.md](mattress_calibration.md).
 
 ## Setup
 

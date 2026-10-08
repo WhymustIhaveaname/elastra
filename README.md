@@ -86,9 +86,20 @@ uv run elastra-load-response mattress=refined trampoline=refined out=outputs/loa
 
 A 10 kg rigid ball of radius 0.125 m is loaded onto each surface quasi-statically (static deflection) and dropped from rest (deflection over time).
 
+## Mattress calibration
+
+```bash
+uv run elastra-indentation                             # EN 1957 loading pad, bed a1
+```
+
+The loading pad of EN 1957 is pressed into the mattress, and the stiffness scale s, a factor on `k` and `b` of bed `a1`, is fitted to the loads that Vlaović et al. (2024) measured on a polyurethane foam mattress at 10 to 50 mm deflection (`data/load_deflection/`).
+The fitted bed (s = 4.10, between beds `a4` and `a8`) over-predicts the held-out loads at 60 to 100 mm by 5.9 % to 10.8 %, and by up to 22.9 % with the pad on a cell centre or on the 0.05 m grid ([docs/mattress_calibration.md](docs/mattress_calibration.md)).
+The mattress has no nonlinear compression term.
+
 ## Validation
 
 [docs/validation.md](docs/validation.md): success counts of the released policies, penetration depth on every surface, and the dependence of the load response and of the success counts on the physics step and the grid spacing.
+[docs/mattress_calibration.md](docs/mattress_calibration.md): the mattress against a measured load-deflection curve.
 
 ## Repository layout
 
@@ -101,10 +112,11 @@ src/elastra/     the package
   success.py, penetration.py              success criterion and penetration depth
   residual.py, training.py                residual policy and PPO training
   evaluation.py, load_response.py         the evaluation and load-response commands
+  indentation.py                          the EN 1957 loading pad and the mattress calibration
   assets.py, initial_states.py            asset download, HoST initial states
-data/            initial states (data/README.md)
+data/            initial states, a measured mattress load-deflection curve (data/README.md)
 checkpoints/     the trained residual policies (Git LFS)
-docs/            validation results
+docs/            validation and calibration results
 tests/           unit tests
 ```
 

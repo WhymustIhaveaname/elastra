@@ -1,0 +1,45 @@
+# elastra-indentation: the EN 1957 loading pad pressed into the mattress, and the
+# stiffness scale fitted to a measured load-deflection curve (docs/mattress_calibration.md).
+defaults:
+  - config
+  - _self_
+# EN 1957:2012, clause 5.6: a rigid circular pad, 355 mm in diameter, whose face has a
+# convex spherical curvature of 800 mm radius with a 20 mm front edge radius.
+pad:
+  diameter_m: 0.355
+  face_radius_m: 0.8
+  edge_radius_m: 0.02
+  # The standard gives no thickness; the cylinder above the face only closes the mesh
+  # and is taller than the deepest indentation.
+  cylinder_height_m: 0.15
+  # mesh resolution: rings on the face and on the edge, segments around the axis
+  rings: 24
+  segments: 96
+  # the pad axis; (0, 0) is the surface centre, on the 0.1 m grid the middle of the
+  # edge shared by two cells
+  position_xy_m: [0.0, 0.0]
+# The pad has a smooth surface: frictionless contact (condim 1) with the cells, with the
+# mattress contact's solref and solimp.
+pad_contact:
+  condim: 1
+# The measured curve: Vlaović et al. (2024), PUR mattress after the first 100 rolling
+# cycles, loading branch (data/README.md).
+curve: data/load_deflection/vlaovic2024_pur_100_cycles.csv
+# deflections (mm) used to fit the stiffness scale; the other deflections of the curve are
+# held out
+fit_deflections_mm: [10, 20, 30, 40, 50]
+# The stiffness scale s multiplies k and b of this bed (c, d and m are kept).
+bed: a1
+loading:
+  # the bed settles under its own weight before the pad touches it
+  settle_s: 2.0
+  # the pad moves at this speed from one deflection to the next and is then held still
+  speed_m_s: 0.01
+  hold_s: 1.0
+  # a deflection counts as settled when no cell moves faster than this at the end of the hold
+  settled_cell_speed_m_s: 1.0e-6
+fit:
+  # stop when the least-squares rescaling of the simulated loads is within this of 1
+  tolerance: 1.0e-4
+  max_iterations: 6
+out: outputs/indentation/base
