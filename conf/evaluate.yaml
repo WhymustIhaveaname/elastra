@@ -19,7 +19,19 @@ surfaces:
   - trampoline/a1
   - trampoline/a2
   - rigid
-# parallel worker processes (one batch of environments each) and physics threads per worker
+# ProtoMotions: groups of surfaces whose environments of one clip run as one batch, every
+# evaluated surface in exactly one block (the residual's float32 matrix products differ in
+# the last bits with the batch size, so the blocks are part of a run's definition)
+protomotions_blocks:
+  - [mattress/a1, mattress/a2]
+  - [mattress/a64, rigid, trampoline/a1]
+  - [mattress/a8, mattress/a16, mattress/a32]
+  - [trampoline/a2, mattress/a4]
+# parallel worker processes (one batch of environments each), physics threads per worker,
+# and torch threads of the residual policy per worker
 workers: 4
 threads: 1
+torch_threads:
+  host: 1
+  protomotions: 4
 out: outputs/evaluation/${controller}

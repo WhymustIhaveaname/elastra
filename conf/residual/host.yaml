@@ -5,8 +5,9 @@
 bound_action_units: 1.3199759360586705
 hidden: [256, 128]
 initial_log_std: -1.0
-# observe root xy, root velocity and the distances to the task-area boundary
-position_observation: true
+# observe root xy, root velocity and the distances to the task-area boundary (training
+# switches it on at a curriculum stage, conf/train/host.yaml)
+position_observation: false
 # the surface type one-hot, the stiffness input and the maximum surface deflection
 surface_observation: true
 stiffness_input:

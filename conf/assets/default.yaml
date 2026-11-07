@@ -1,0 +1,130 @@
+# Third-party assets.  None of these files are stored in this repository;
+# elastra-download-assets fetches them into ${paths.assets} and checks every
+# file against the sha256 below.  Sources and licenses are listed in THIRD_PARTY.md.
+protomotions:
+  # NVlabs ProtoMotions (Apache-2.0).  The Unitree G1 model and meshes inside it
+  # are BSD-3-Clause (Unitree Robotics).
+  repository: https://github.com/NVlabs/ProtoMotions
+  commit: 49fe5ad69de67ebbc07ea2b25d41b0f622c15c3c
+  files:
+    LICENSE.md: {path: LICENSE.md, lfs: false, sha256: null}
+    g1_holo_compat.xml:
+      path: protomotions/data/assets/mjcf/g1_holo_compat.xml
+      lfs: false
+      sha256: f9a455ff0b2822b3d3f68e55b02cd7e21c601a84cf3173237b7bfaf494492846
+    unified_pipeline.onnx:
+      path: data/pretrained_models/motion_tracker/g1-bones-deploy/compiled_models/unified_pipeline.onnx
+      lfs: true
+      sha256: a59baa3e04a951e5cf0b4cc68f24ebaafa9272714226618b99a5017dfc805b4c
+    unified_pipeline.yaml:
+      path: data/pretrained_models/motion_tracker/g1-bones-deploy/compiled_models/unified_pipeline.yaml
+      lfs: true
+      sha256: 9b7896f3355a9d9d5e7d3139b83924eeb2e45c62c30bfda44afe996cfc6cf01c
+  mesh_path: protomotions/data/assets/mesh/G1
+  meshes:
+    pelvis.stl: 5ba6bbc888e630550140d3c26763f10206da8c8bd30ed886b8ede41c61f57a31
+    pelvis_contour_link.stl: 5cc5c2c7a312329e3feeb2b03d3fc09fc29705bd01864f6767e51be959662420
+    left_hip_pitch_link.stl: 4725168105ee768ee31638ef22b53f6be2d7641bfd7cfefe803488d884776fa4
+    left_hip_roll_link.stl: 91f25922ee8a7c3152790051bebad17b4d9cd243569c38fe340285ff93a97acf
+    left_hip_yaw_link.stl: a16d88aa6ddac8083aa7ad55ed317bea44b1fa003d314fba88965b7ed0f3b55b
+    left_knee_link.stl: 8d92b9e3d3a636761150bb8025e32514c4602b91c7028d523ee42b3e632de477
+    left_ankle_pitch_link.stl: d49e3abc6f5b12e532062cd575b87b5ef40cd2a3fc18f54a1ca5bba4f773d51d
+    left_ankle_roll_link.stl: c4092af943141d4d9f74232f3cfa345afc6565f46a077793b8ae0e68b39dc33f
+    right_hip_pitch_link.stl: e4f3c99d7f4a7d34eadbef9461fc66e3486cb5442db1ec50c86317d459f1a9c6
+    right_hip_roll_link.stl: 4c254ef66a356f492947f360dd931965477b631e3fcc841f91ccc46d945d54f6
+    right_hip_yaw_link.stl: e479c2936ca2057e9eb2f7dff6c189b7419d7b8484dea0b298cbb36a2a6aa668
+    right_knee_link.stl: 63c4008449c9bbe701a6e2b557b7a252e90cf3a5abcf54cee46862b9a69f8ec8
+    right_ankle_pitch_link.stl: 15be426539ec1be70246d4d82a168806db64a41301af8b35c197a33348c787a9
+    right_ankle_roll_link.stl: 4b66222ea56653e627711b56d0a8949b4920da5df091da0ceb343f54e884e3a5
+    waist_yaw_link_rev_1_0.stl: ec6db442b11f25eed898b5add07940c85d804f300de24dcbd264ccd8be7d554c
+    waist_roll_link_rev_1_0.stl: b67c347a05abc3e8ddae600d98a082bee273bb39f8e651647708b0a7140a8a97
+    torso_link_rev_1_0.stl: 11ddb46f2098efbbd8816b1d65893632d8e78be936376c7cdcd6771899ccc723
+    logo_link.stl: 8571a0a19bc4916fa55f91449f51d5fdefd751000054865a842449429d5f155b
+    head_link.stl: 005fb67fbd3eff94aa8bf4a6e83238174e9f91b6721f7111594322f223724411
+    left_shoulder_pitch_link.stl: f0d1cfd02fcf0d42f95e678eeca33da3afbcc366ffba5c052847773ec4f31d52
+    left_shoulder_roll_link.stl: fb9df21687773522598dc384f1a2945c7519f11cbc8bd372a49170316d6eee88
+    left_shoulder_yaw_link.stl: 1aa97e9748e924336567992181f78c7cd0652fd52a4afcca3df6b2ef6f9e712e
+    left_elbow_link.stl: fa752198accd104d5c4c3a01382e45165b944fbbc5acce085059223324e5bed3
+    left_wrist_roll_link.stl: edc387c9a0ba8c2237e9b296d32531426fabeb6f53e58df45c76106bca74148c
+    left_wrist_pitch_link.stl: b251d8e05047f695d0f536cd78c11973cfa4e78d08cfe82759336cc3471de3a9
+    left_wrist_yaw_link.stl: 83f8fb3a726bf9613d65dd14f0f447cb918c3c95b3938042a0c9c09749267d3b
+    left_rubber_hand.stl: cff2221a690fa69303f61fce68f2d155c1517b52efb6ca9262dd56e0bc6e70fe
+    right_shoulder_pitch_link.stl: 24cdb387e0128dfe602770a81c56cdce3a0181d34d039a11d1aaf8819b7b8c02
+    right_shoulder_roll_link.stl: 962b97c48f9ce9e8399f45dd9522e0865d19aa9fd299406b2d475a8fc4a53e81
+    right_shoulder_yaw_link.stl: a0b76489271da0c72461a344c9ffb0f0c6e64f019ea5014c1624886c442a2fe5
+    right_elbow_link.stl: 1be925d7aa268bb8fddf5362b9173066890c7d32092c05638608126e59d1e2ab
+    right_wrist_roll_link.stl: a7ee9212ff5b94d6cb7f52bb1bbf3f352194d5b598acff74f4c77d340c5b344f
+    right_wrist_pitch_link.stl: d22f8f3b3127f15a63e5be1ee273cd5075786c3142f1c3d9f76cbf43d2a26477
+    right_wrist_yaw_link.stl: bc9dece2d12509707e0057ba2e48df8f3d56db0c79410212963a25e8a50f61a6
+    right_rubber_hand.stl: 99533b778bca6246144fa511bb9d4e555e075c641f2a0251e04372869cd99d67
+host:
+  # InternRobotics HoST (MIT).  The 23-DoF G1 URDF and meshes are Unitree's (BSD-3-Clause).
+  repository: https://github.com/InternRobotics/HoST
+  commit: 70bb580949a336a920833700e4b5dc3bf7fe87ce
+  files:
+    LICENSE: {path: LICENSE, lfs: false, sha256: null}
+    g1_23dof.urdf:
+      path: legged_gym/resources/robots/g1/g1_23dof.urdf
+      lfs: false
+      sha256: 23cf6d3aca9a8558b5e06f1378580a62ec731081fb7a3008f878c27c517bcd1a
+  mesh_path: legged_gym/resources/robots/g1/meshes
+  meshes:
+    head_link.STL: 005fb67fbd3eff94aa8bf4a6e83238174e9f91b6721f7111594322f223724411
+    left_ankle_pitch_link.STL: d49e3abc6f5b12e532062cd575b87b5ef40cd2a3fc18f54a1ca5bba4f773d51d
+    left_ankle_roll_link.STL: c4092af943141d4d9f74232f3cfa345afc6565f46a077793b8ae0e68b39dc33f
+    left_elbow_link.STL: fa752198accd104d5c4c3a01382e45165b944fbbc5acce085059223324e5bed3
+    left_hip_pitch_link.STL: 4725168105ee768ee31638ef22b53f6be2d7641bfd7cfefe803488d884776fa4
+    left_hip_roll_link.STL: 91f25922ee8a7c3152790051bebad17b4d9cd243569c38fe340285ff93a97acf
+    left_hip_yaw_link.STL: a16d88aa6ddac8083aa7ad55ed317bea44b1fa003d314fba88965b7ed0f3b55b
+    left_knee_link.STL: 8d92b9e3d3a636761150bb8025e32514c4602b91c7028d523ee42b3e632de477
+    left_shoulder_pitch_link.STL: f0d1cfd02fcf0d42f95e678eeca33da3afbcc366ffba5c052847773ec4f31d52
+    left_shoulder_roll_link.STL: fb9df21687773522598dc384f1a2945c7519f11cbc8bd372a49170316d6eee88
+    left_shoulder_yaw_link.STL: 1aa97e9748e924336567992181f78c7cd0652fd52a4afcca3df6b2ef6f9e712e
+    left_wrist_roll_rubber_hand.STL: e81030abd023bd9e4a308ef376d814a2c12d684d8a7670c335bbd5cd7809c909
+    logo_link.STL: 8571a0a19bc4916fa55f91449f51d5fdefd751000054865a842449429d5f155b
+    pelvis.STL: 5ba6bbc888e630550140d3c26763f10206da8c8bd30ed886b8ede41c61f57a31
+    pelvis_contour_link.STL: 5cc5c2c7a312329e3feeb2b03d3fc09fc29705bd01864f6767e51be959662420
+    right_ankle_pitch_link.STL: 15be426539ec1be70246d4d82a168806db64a41301af8b35c197a33348c787a9
+    right_ankle_roll_link.STL: 4b66222ea56653e627711b56d0a8949b4920da5df091da0ceb343f54e884e3a5
+    right_elbow_link.STL: 1be925d7aa268bb8fddf5362b9173066890c7d32092c05638608126e59d1e2ab
+    right_hip_pitch_link.STL: e4f3c99d7f4a7d34eadbef9461fc66e3486cb5442db1ec50c86317d459f1a9c6
+    right_hip_roll_link.STL: 4c254ef66a356f492947f360dd931965477b631e3fcc841f91ccc46d945d54f6
+    right_hip_yaw_link.STL: e479c2936ca2057e9eb2f7dff6c189b7419d7b8484dea0b298cbb36a2a6aa668
+    right_knee_link.STL: 63c4008449c9bbe701a6e2b557b7a252e90cf3a5abcf54cee46862b9a69f8ec8
+    right_shoulder_pitch_link.STL: 24cdb387e0128dfe602770a81c56cdce3a0181d34d039a11d1aaf8819b7b8c02
+    right_shoulder_roll_link.STL: 962b97c48f9ce9e8399f45dd9522e0865d19aa9fd299406b2d475a8fc4a53e81
+    right_shoulder_yaw_link.STL: a0b76489271da0c72461a344c9ffb0f0c6e64f019ea5014c1624886c442a2fe5
+    right_wrist_roll_rubber_hand.STL: 0729aff1ac4356f9314de13a46906267642e58bc47f0d8a7f17f6590a6242ccf
+    torso_link.STL: e96d023f0368a4e3450b86ca5d4f10227d8141156a373e7da8cb3c93266523e0
+    waist_support_link.STL: 1fae9e1bb609848a1667d32eed8d6083ae443538a306843056a2a660f1b2926a
+    waist_yaw_link.STL: 2883f20e03f09b669b5b4ce10677ee6b5191c0934b584d7cbaef2d0662856ffb
+host_policies:
+  # The two released HoST get-up policies, shared by the HoST authors in
+  # https://github.com/InternRobotics/HoST/issues/9 (Google Drive folder
+  # 1Q6xgK92KlSDZMBNi9RPpYiRmEP6a2Qqg).
+  prone:
+    original_name: 0322_prone1(1).onnx
+    google_drive_id: 1N2Xkh3Rgu_wxdta8Nk5zj2SDkvsVjdp-
+    sha256: 62abf58c9a3d50dbe22ba1f950f288795fb3ae54bd3ca6221cc12cb1d45de155
+  supine:
+    original_name: ground_Jan20_00-39-48_test_elbow0_g1_ground_150_200_0.25.onnx
+    google_drive_id: 1v3LoL53uoLKBR7-qLvku1bG2GhkuEiVM
+    sha256: 286ae8b4fc0f7b722ee4a68e3c5c5a3faa22eb8c48caab3a1a9337d7b70973ba
+bones_seed:
+  # BONES-SEED (Bones Studio), a gated Hugging Face dataset under the BONES-SEED
+  # Dataset License.  Accept the license on the dataset page and export HF_TOKEN.
+  # Only three G1 clips are extracted from the 23.5 GB archive; the stream stops
+  # once they are found.
+  dataset: bones-studio/seed
+  revision: 2f59b2077b9da34dd4e43618e705c7cb962c9a66
+  archive: g1.tar.gz
+  clips:
+    supine:
+      member: g1/csv/231024/faint_stand_up_lying_R_001__A492.csv
+      sha256: 25ba71a61eb4ae27c2aba9b5ed1421a6cc155389308cd6f28c6df3a845664e71
+    side:
+      member: g1/csv/231024/faint_stand_up_lying_side_R_001__A492.csv
+      sha256: 82b088e210520647267bf2ebcd836b5840e9c0b9951f88413fc4a18a01c16d0c
+    prone:
+      member: g1/csv/231024/faint_stand_up_lying_stomach_R_001__A492.csv
+      sha256: 7a9de60a7cd19792fac9d34e5f57d108dd03cf1afe183a6d8fc1df2f4b182e5c

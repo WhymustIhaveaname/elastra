@@ -1,27 +1,33 @@
 # The HoST residual policy (elastra/training.py), trained from scratch.
 controller: host
 description: >-
-  HoST residual policy: 1000 PPO updates on the relative-height success criterion
-  with the position observation; mattress a8, a16, a32, a64, rigid ground and
-  trampolines a1, a2 for 500 updates, then a16, a32, a64 replaced by a1, a2, a4
+  HoST residual policy: 1000 PPO updates on the relative-height success criterion;
+  mattress a8, a16, a32, a64, rigid ground and trampolines a1, a2 without the position
+  observation for 500 updates, then with it (its input columns starting at zero) and
+  a16, a32, a64 replaced by a1, a2, a4
 seed: 283402
-# 256 environments; the environments of a surface keep it for a whole curriculum stage
+# 256 environments; the environments of a surface keep it for a whole curriculum stage.
+# The order of the surfaces is the order of the shuffled environment list.
 num_envs: 256
 surfaces:
-  mattress/a8: 32
   mattress/a16: 32
   mattress/a32: 32
   mattress/a64: 32
+  mattress/a8: 32
   rigid: 51
-  trampoline/a1: 39
   trampoline/a2: 38
+  trampoline/a1: 39
 curriculum:
-  # from update 500 the environments of a16, a32, a64 move to a1, a2, a4 (softest last)
+  # from update 500 the environments of a16, a32, a64 move to a1, a2, a4, and the residual
+  # observes the robot's position
   - from_update: 500
+    position_observation: true
     replace:
       mattress/a16: mattress/a1
       mattress/a32: mattress/a2
       mattress/a64: mattress/a4
+# seed offset of HoST's observation noise generators in training
+observation_noise_seed_offset: 5000
 # the 32 HoST training initial states (data/initial_states/host.npz, split "train")
 initial_states: train
 # an episode: the 250 control steps of a HoST episode after its 30 unactuated steps

@@ -159,6 +159,49 @@ def build_actor_critic(
     return Actor(), Critic()
 
 
+def grow_networks(actor, critic, start: int, count: int) -> None:
+    """Insert ``count`` zero input columns at ``start`` into the first layer of both networks
+    (a new observation block whose weights start at zero)."""
+
+    import torch
+    from torch import nn
+
+    for net in (actor, critic):
+        base = net.body[0]
+        layer = nn.Linear(int(base.in_features) + int(count), int(base.out_features))
+        with torch.no_grad():
+            weight = base.weight.detach()
+            zeros = torch.zeros((weight.shape[0], int(count)), dtype=weight.dtype)
+            parts = [weight[:, : int(start)], zeros, weight[:, int(start) :]]
+            layer.weight.copy_(torch.cat(parts, dim=1))
+            layer.bias.copy_(base.bias.detach())
+        net.body[0] = layer
+
+
+def grow_optimizer_state(state: dict, actor, critic, start: int, count: int) -> dict:
+    """An Adam state dict of the narrow networks for the grown ones: the moments of the
+    inserted first-layer columns start at zero, everything else (including the step
+    count) is carried over."""
+
+    import copy
+
+    import torch
+
+    grown = copy.deepcopy(state)
+    params = list(actor.parameters()) + list(critic.parameters())
+    first = {id(actor.body[0].weight), id(critic.body[0].weight)}
+    for index, param in enumerate(params):
+        if id(param) not in first or index not in grown["state"]:
+            continue
+        for key in ("exp_avg", "exp_avg_sq"):
+            old = grown["state"][index][key]
+            zeros = torch.zeros((old.shape[0], int(count)), dtype=old.dtype)
+            grown["state"][index][key] = torch.cat(
+                [old[:, : int(start)], zeros, old[:, int(start) :]], dim=1
+            ).contiguous()
+    return grown
+
+
 @dataclass
 class ResidualPolicy:
     """A trained residual actor used greedily: ``delta = bound * tanh(mean(obs))``."""

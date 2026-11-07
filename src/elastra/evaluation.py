@@ -41,7 +41,9 @@ from elastra.scene import Surface, build_scene
 
 
 def jobs_for(cfg) -> list[dict]:
-    """One job per (surface, posture) for HoST and per (surface, clip) for ProtoMotions."""
+    """HoST: one job per (surface, posture).  ProtoMotions: one job per (block, clip), a block
+    being a group of surfaces (``protomotions_blocks``) whose environments of one clip are
+    stepped as one batch, ordered surface by surface."""
 
     data = config.data_dir(cfg) / "initial_states"
     jobs = []
@@ -51,16 +53,24 @@ def jobs_for(cfg) -> list[dict]:
         for surface in cfg.surfaces:
             for posture in ("prone", "supine"):
                 rows = [int(i) for i in chosen if str(states["posture"][i]) == posture]
-                jobs.append({"surface": str(surface), "group": posture, "rows": rows})
+                jobs.append({"surfaces": [str(surface)], "group": posture, "rows": rows})
     else:
         states = np.load(data / "protomotions.npz")
         prefix = str(cfg.initial_states)
         clips = states[f"{prefix}_clip"]
-        for surface in cfg.surfaces:
-            for clip in ("prone", "side", "supine"):
+        blocks = [[str(s) for s in block] for block in cfg.protomotions_blocks]
+        in_blocks = [Surface.parse(s).label for block in blocks for s in block]
+        wanted = [Surface.parse(str(s)).label for s in cfg.surfaces]
+        if sorted(in_blocks) != sorted(wanted):
+            raise ValueError(
+                f"protomotions_blocks must hold every evaluated surface exactly once: "
+                f"blocks {sorted(in_blocks)}, surfaces {sorted(wanted)}"
+            )
+        for block in blocks:
+            for clip in sorted({str(c) for c in clips}):
                 rows = [int(i) for i in np.flatnonzero(clips == clip)]
                 if rows:
-                    jobs.append({"surface": str(surface), "group": clip, "rows": rows})
+                    jobs.append({"surfaces": block, "group": clip, "rows": rows})
     return jobs
 
 
@@ -68,15 +78,17 @@ def run_job(args: tuple) -> dict:
     overrides, job = args
     import torch
 
-    torch.set_num_threads(1)
+    cfg = config.load(overrides, config_name="evaluate")
+    robot = str(cfg.controller)
+    torch.set_num_threads(int(cfg.torch_threads[robot]))
     from elastra import residual
 
-    cfg = config.load(overrides, config_name="evaluate")
-    surface = Surface.parse(job["surface"])
+    surfaces = [Surface.parse(s) for s in job["surfaces"]]
     data = config.data_dir(cfg) / "initial_states"
-    robot = str(cfg.controller)
-    scene = build_scene(cfg, robot, surface)
-    n = len(job["rows"])
+    built = {s.label: build_scene(cfg, robot, s) for s in surfaces}
+    pairs = [(s, row) for s in surfaces for row in job["rows"]]
+    scenes = [built[s.label] for s, _ in pairs]
+    n = len(pairs)
     policy = None
     if cfg.policy:
         policy = residual.load_policy(
@@ -86,29 +98,29 @@ def run_job(args: tuple) -> dict:
     started = time.time()
     if robot == "host":
         states = np.load(data / "host.npz")
-        key = "qpos_initial" if surface.kind == "trampoline" else "qpos_lowered"
+        keys = ["qpos_initial" if s.kind == "trampoline" else "qpos_lowered" for s, _ in pairs]
         traces = rollout.host_episodes(
             cfg,
-            [scene] * n,
-            [states[key][i] for i in job["rows"]],
-            [str(states["posture"][i]) for i in job["rows"]],
-            [int(states["seed"][i]) for i in job["rows"]],
+            scenes,
+            [states[k][i] for k, (_, i) in zip(keys, pairs)],
+            [str(states["posture"][i]) for _, i in pairs],
+            [int(states["seed"][i]) for _, i in pairs],
             policy,
             residual_cfg=cfg.residuals.host,
             threads=int(cfg.threads),
         )
-        ids = [str(states["init_id"][i]) for i in job["rows"]]
+        ids = [str(states["init_id"][i]) for _, i in pairs]
     else:
         states = np.load(data / "protomotions.npz")
         prefix = str(cfg.initial_states)
-        qpos = [states[f"{prefix}_qpos"][i] for i in job["rows"]]
-        settled = rollout.protomotions_settle(cfg, [scene] * n, qpos, threads=int(cfg.threads))
+        qpos = [states[f"{prefix}_qpos"][i] for _, i in pairs]
+        settled = rollout.protomotions_settle(cfg, scenes, qpos, threads=int(cfg.threads))
         traces = rollout.protomotions_episodes(
-            cfg, [scene] * n, settled, [job["group"]] * n, policy, threads=int(cfg.threads)
+            cfg, scenes, settled, [job["group"]] * n, policy, threads=int(cfg.threads)
         )
-        ids = [str(states[f"{prefix}_source_id"][i]) for i in job["rows"]]
+        ids = [str(states[f"{prefix}_source_id"][i]) for _, i in pairs]
     rows = []
-    for init_id, trace in zip(ids, traces):
+    for (surface, _), init_id, trace in zip(pairs, ids, traces):
         outcome = rollout.score(trace, cfg.criterion, float(cfg.sim.control_dt_s))
         arrays = trace.arrays()
         inside = penetration.steps_in_task_area(
@@ -122,6 +134,7 @@ def run_job(args: tuple) -> dict:
                 "surface": surface.label,
                 "initial_state": init_id,
                 "group": job["group"],
+                "block": "+".join(s.label for s in surfaces),
                 "success": bool(outcome.success),
                 "outcome": outcome.outcome_class,
                 "completion_step": outcome.completion_step,
@@ -181,14 +194,14 @@ def main(argv: list[str] | None = None) -> int:
     if workers == 1:
         for job in jobs:
             results.append(run_job((argv, job)))
-            print(f"{job['surface']} {job['group']}: done", flush=True)
+            print(f"{'+'.join(job['surfaces'])} {job['group']}: done", flush=True)
     else:
         with mp.get_context("spawn").Pool(workers) as pool:
             for result in pool.imap_unordered(run_job, [(argv, job) for job in jobs]):
                 job = result["job"]
                 ok = sum(r["success"] for r in result["rows"])
                 print(
-                    f"{job['surface']} {job['group']}: {ok}/{len(result['rows'])} "
+                    f"{'+'.join(job['surfaces'])} {job['group']}: {ok}/{len(result['rows'])} "
                     f"({result['wall_s']:.0f} s)",
                     flush=True,
                 )

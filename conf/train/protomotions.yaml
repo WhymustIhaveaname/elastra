@@ -5,15 +5,16 @@ description: >-
   criterion; mattress a8, a16, a32, a64, rigid ground and trampolines a1, a2; the 39
   training initial states
 seed: 287121
+# the order of the surfaces is the order of the shuffled environment list
 num_envs: 256
 surfaces:
   mattress/a8: 32
   mattress/a16: 32
   mattress/a32: 32
   mattress/a64: 32
-  rigid: 51
   trampoline/a1: 39
   trampoline/a2: 38
+  rigid: 51
 curriculum: []
 # the 39 training initial states (data/initial_states/protomotions.npz, train_*); an
 # episode lasts as long as the reference clip of its initial state
@@ -43,8 +44,10 @@ reward:
 task_area_every_physics_step: false
 # worker processes that step the environments (environment e on worker e mod workers)
 workers: 32
-# threads of the PPO update
+# threads of the PPO update, under an OpenMP thread limit (OMP_THREAD_LIMIT) as in the
+# earlier training's environment
 torch_threads: 2
+omp_thread_limit: 1
 checkpoint_every: 10
 # continue from the latest checkpoint in `out` if there is one (every environment restarts)
 resume: true

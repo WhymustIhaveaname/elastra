@@ -10,7 +10,16 @@ uprightness: 0.9
 hold_s: 1.0
 # The task area: |x| <= half_extents[0], |y| <= half_extents[1] (the mattress
 # footprint, 2.0 m x 1.9 m, centred on the origin, used for every surface).  The
-# robot has left it when the world-axis-aligned bounding box of any robot
-# collision geom crosses the boundary; checked after every physics step.
+# robot has left it when, per controller (`task_area_rule`), the world-axis-aligned
+# bounding box of any robot collision geom crosses the boundary (bounding_box) or the
+# centre of any robot collision geom lies outside it (geom_centre).  The evaluation
+# checks it after every physics step or once per control step
+# (`task_area_every_physics_step`); training checks it once per control step.
 task_area_half_extents_m: [1.0, 0.95]
 task_area_tolerance_m: 1.0e-12
+task_area_rule:
+  host: bounding_box
+  protomotions: geom_centre
+task_area_every_physics_step:
+  host: true
+  protomotions: false

@@ -75,19 +75,17 @@ from elastra.sim import Batch
 # --------------------------------------------------------------------------- #
 def environment_surfaces(train: DictConfig, seed: int) -> list[str]:
     """The surface of every environment: ``surfaces`` gives the number of environments per
-    surface, and the environments are shuffled once with the training seed."""
+    surface in order; the list of surface indices is shuffled once with the training seed."""
 
-    labels = [
-        Surface.parse(str(name)).label
-        for name, count in train.surfaces.items()
-        for _ in range(int(count))
-    ]
-    if len(labels) != int(train.num_envs):
+    names = [Surface.parse(str(name)).label for name in train.surfaces]
+    counts = [int(count) for count in train.surfaces.values()]
+    if sum(counts) != int(train.num_envs):
         raise ValueError(
-            f"surfaces add up to {len(labels)} environments, num_envs is {train.num_envs}"
+            f"surfaces add up to {sum(counts)} environments, num_envs is {train.num_envs}"
         )
-    order = np.random.default_rng([seed, 1]).permutation(len(labels))
-    return [labels[k] for k in order]
+    index = np.repeat(np.arange(len(names), dtype=np.int64), counts)
+    np.random.default_rng(int(seed)).shuffle(index)
+    return [names[k] for k in index]
 
 
 def stage_surfaces(train: DictConfig, surfaces: list[str], update: int) -> list[str]:
@@ -107,6 +105,51 @@ def stage_surfaces(train: DictConfig, surfaces: list[str], update: int) -> list[
 
 def stage_starts(train: DictConfig) -> set[int]:
     return {int(stage.from_update) for stage in train.get("curriculum") or []}
+
+
+def stage_position_observation(train: DictConfig, base: bool, update: int) -> bool:
+    """Whether the residual observes the robot's position at ``update``: ``base`` until a
+    curriculum stage that has started sets ``position_observation``."""
+
+    value = bool(base)
+    for stage in train.get("curriculum") or []:
+        if update >= int(stage.from_update) and "position_observation" in stage:
+            value = bool(stage.position_observation)
+    return value
+
+
+class InitialStateDraws:
+    """The initial state of every episode, drawn in the main process from one generator
+    seeded with the training seed, for the environments that start an episode in
+    ascending order: HoST draws one of the training states of the environment's posture
+    (even environments prone, odd supine) per environment, ProtoMotions draws all of them
+    in one call.  The generator state is saved with the checkpoints."""
+
+    def __init__(self, cfg: DictConfig, robot: str, seed: int) -> None:
+        self.robot = robot
+        self.rng = np.random.default_rng(int(seed))
+        data = config.data_dir(cfg) / "initial_states"
+        num_envs = int(cfg.train.num_envs)
+        if robot == "host":
+            states = np.load(data / "host.npz")
+            chosen = states["split"] == str(cfg.train.initial_states)
+            self.pools = {
+                p: np.flatnonzero(chosen & (states["posture"] == p)) for p in ("prone", "supine")
+            }
+            self.postures = ["prone" if env % 2 == 0 else "supine" for env in range(num_envs)]
+        else:
+            states = np.load(data / "protomotions.npz")
+            self.count = len(states[f"{cfg.train.initial_states}_qpos"])
+
+    def draw(self, env_ids: np.ndarray) -> np.ndarray:
+        ids = np.asarray(env_ids, dtype=np.int64)
+        if self.robot == "host":
+            picks = []
+            for env in ids.tolist():
+                pool = self.pools[self.postures[env]]
+                picks.append(int(pool[int(self.rng.integers(0, len(pool)))]))
+            return np.asarray(picks, dtype=np.int64)
+        return np.asarray(self.rng.integers(0, self.count, size=ids.size), dtype=np.int64)
 
 
 # --------------------------------------------------------------------------- #
@@ -186,9 +229,9 @@ class TrainingEnvs:
         cfg: DictConfig,
         surfaces: Sequence[str],
         env_ids: Sequence[int],
-        stage: int,
         scenes: dict[str, Scene],
         cache: dict,
+        position_observation: bool,
     ) -> None:
         self.cfg = cfg
         self.train = cfg.train
@@ -197,8 +240,7 @@ class TrainingEnvs:
         self.surfaces = [Surface.parse(s) for s in surfaces]
         self.labels = [s.label for s in self.surfaces]
         self.cache = cache
-        seed = int(self.train.seed)
-        self.reset_rngs = [np.random.default_rng([seed, 2, int(stage), int(e)]) for e in env_ids]
+        self.position_observation = bool(position_observation)
         scenes_for(cfg, self.robot, self.labels, scenes)
         self.scenes = [scenes[label] for label in self.labels]
         self.batch = Batch(
@@ -223,7 +265,7 @@ class TrainingEnvs:
         self.batch.close()
 
     # -- per controller ----------------------------------------------------------
-    def _restart(self, env_ids: np.ndarray) -> None:
+    def _restart(self, env_ids: np.ndarray, picks: np.ndarray) -> None:
         raise NotImplementedError
 
     def _parent_command(self, state: dict[str, np.ndarray]) -> np.ndarray:
@@ -236,11 +278,13 @@ class TrainingEnvs:
         raise NotImplementedError
 
     # -- common ------------------------------------------------------------------
-    def reset(self, env_ids: np.ndarray | None = None) -> None:
-        ids = np.arange(self.n) if env_ids is None else np.asarray(env_ids, dtype=np.int64)
+    def reset(self, env_ids: np.ndarray, picks: np.ndarray) -> None:
+        """Start a new episode on ``env_ids`` (local indices) from the initial states ``picks``."""
+
+        ids = np.asarray(env_ids, dtype=np.int64)
         if ids.size == 0:
             return
-        self._restart(ids)
+        self._restart(ids, np.asarray(picks, dtype=np.int64))
         self.frame[ids] = 0
         self.stand_run[ids] = 0
         self.completed[ids] = False
@@ -256,7 +300,14 @@ class TrainingEnvs:
         return self._observation(state)
 
     def step(self, raw_action: np.ndarray) -> dict[str, np.ndarray]:
-        delta = float(self.bound) * np.tanh(np.asarray(raw_action, dtype=np.float64))
+        import torch
+
+        # the correction in single precision, as the sampled action is
+        delta = (
+            (float(self.bound) * torch.tanh(torch.as_tensor(raw_action, dtype=torch.float32)))
+            .numpy()
+            .astype(np.float64)
+        )
         self._apply(self.parent + delta)
         self.frame += 1
         diverged = self.batch.diverged()
@@ -292,19 +343,21 @@ class TrainingEnvs:
 
     def advance(self, raw_action: np.ndarray) -> dict[str, np.ndarray]:
         """One control step of the training loop: :meth:`step`, the observation after it
-        (``next_obs``, which bootstraps truncated episodes), the return of every episode so
-        far, and the observation after the finished episodes restart (``obs``)."""
+        (``next_obs``, which bootstraps truncated episodes) and the return of every episode
+        so far.  The main process then draws the initial states of the finished episodes
+        and calls :meth:`restart`."""
 
         result = self.step(raw_action)
         result["next_obs"] = self.observation()
         result["episode_return"] = self.episode_return.copy()
-        ended = np.flatnonzero(result["terminated"] | result["truncated"])
-        if ended.size:
-            self.reset(ended)
-            result["obs"] = self.observation()
-        else:
-            result["obs"] = result["next_obs"]
         return result
+
+    def restart(self, env_ids: np.ndarray, picks: np.ndarray) -> np.ndarray:
+        """Restart the finished episodes ``env_ids`` and return the observation of every
+        environment."""
+
+        self.reset(env_ids, picks)
+        return self.observation()
 
 
 class HostEnvs(TrainingEnvs):
@@ -315,19 +368,20 @@ class HostEnvs(TrainingEnvs):
         cfg: DictConfig,
         surfaces: Sequence[str],
         env_ids: Sequence[int],
-        stage: int,
         scenes: dict[str, Scene],
         cache: dict,
+        position_observation: bool,
     ) -> None:
-        super().__init__(cfg, surfaces, env_ids, stage, scenes, cache)
+        super().__init__(cfg, surfaces, env_ids, scenes, cache, position_observation)
         host = cfg.robots.host
         self.residual_cfg = cfg.residuals.host
         self.bound = float(self.residual_cfg.bound_action_units)
         self.postures = ["prone" if env % 2 == 0 else "supine" for env in self.env_ids.tolist()]
         self.controller = HostController(cfg, assets_dir(cfg), self.postures)
+        # HoST's observation noise, one generator per environment, created at every stage start
         self.noise = [
             np.random.default_rng(
-                int(self.train.seed) + int(host.observation_noise_seed_offset) + env
+                int(self.train.seed) + int(self.train.observation_noise_seed_offset) + env
             )
             for env in self.env_ids.tolist()
         ]
@@ -335,18 +389,11 @@ class HostEnvs(TrainingEnvs):
         self.actuated = np.full(self.n, int(host.unactuated_control_steps) + 1, dtype=np.int64)
         self.horizon[:] = int(self.train.horizon_control_steps)
         self.features = residual_module.surface_features(cfg, self.residual_cfg, self.surfaces)
-        states = np.load(config.data_dir(cfg) / "initial_states" / "host.npz")
-        chosen = states["split"] == str(self.train.initial_states)
-        self.by_posture = {
-            p: np.flatnonzero(chosen & (states["posture"] == p)) for p in ("prone", "supine")
-        }
 
-    def _restart(self, env_ids: np.ndarray) -> None:
-        picked = []
-        for env in env_ids.tolist():
-            pool = self.by_posture[self.postures[env]]
-            picked.append(int(pool[self.reset_rngs[env].integers(0, pool.size)]))
-        entries = [self.cache[self.labels[env]][row] for env, row in zip(env_ids, picked)]
+    def _restart(self, env_ids: np.ndarray, picks: np.ndarray) -> None:
+        entries = [
+            self.cache[self.labels[env]][int(row)] for env, row in zip(env_ids.tolist(), picks)
+        ]
         self.batch.restore(env_ids, [state for state, _ in entries])
         self.initial_torso_z[env_ids] = [z for _, z in entries]
         self.controller.reset(env_ids)
@@ -372,7 +419,7 @@ class HostEnvs(TrainingEnvs):
             quat=state["quat_wxyz"],
             progress=residual_module.phase(self.frame, self.horizon),
             surface_block=surface_block,
-            position=bool(self.residual_cfg.position_observation),
+            position=self.position_observation,
         )
 
 
@@ -384,11 +431,11 @@ class ProtomotionsEnvs(TrainingEnvs):
         cfg: DictConfig,
         surfaces: Sequence[str],
         env_ids: Sequence[int],
-        stage: int,
         scenes: dict[str, Scene],
         cache: dict,
+        position_observation: bool,
     ) -> None:
-        super().__init__(cfg, surfaces, env_ids, stage, scenes, cache)
+        super().__init__(cfg, surfaces, env_ids, scenes, cache, position_observation)
         self.residual_cfg = cfg.residuals.protomotions
         self.bound = float(self.residual_cfg.bound_rad)
         assets = assets_dir(cfg)
@@ -404,11 +451,8 @@ class ProtomotionsEnvs(TrainingEnvs):
         self.heading = np.zeros((self.n, 4))
         self.previous = np.zeros((self.n, len(self.scenes[0].robot_dof)), dtype=np.float32)
 
-    def _restart(self, env_ids: np.ndarray) -> None:
-        poses = np.asarray(
-            [self.reset_rngs[env].integers(0, len(self.poses)) for env in env_ids.tolist()],
-            dtype=np.int64,
-        )
+    def _restart(self, env_ids: np.ndarray, picks: np.ndarray) -> None:
+        poses = np.asarray(picks, dtype=np.int64)
         self.batch.restore(
             env_ids, [self.cache[self.labels[env]][int(p)] for env, p in zip(env_ids, poses)]
         )
@@ -434,7 +478,7 @@ class ProtomotionsEnvs(TrainingEnvs):
             self.parent,
             quat=state["anchor_xyzw"],
             progress=residual_module.phase(self.frame, self.horizon),
-            position=bool(self.residual_cfg.position_observation),
+            position=self.position_observation,
         )
 
 
@@ -464,11 +508,14 @@ def _serve(conn, cfg_container: dict) -> None:
             elif command == "start":
                 if envs is not None:
                     envs.close()
+                picks = payload.pop("picks")
                 envs = ENVS[robot](cfg, scenes=scenes, **payload)
-                envs.reset()
+                envs.reset(np.arange(envs.n), picks)
                 result = envs.observation()
             elif command == "advance":
                 result = envs.advance(payload)
+            elif command == "restart":
+                result = envs.restart(*payload)
             else:
                 raise ValueError(f"unknown command {command}")
             conn.send(("ok", result))
@@ -483,10 +530,11 @@ class ShardedEnvs:
     ``e mod workers``).  The start states are computed once, spread over the workers, and
     kept for later curriculum stages."""
 
-    def __init__(self, cfg: DictConfig, workers: int) -> None:
+    def __init__(self, cfg: DictConfig, workers: int, draws: InitialStateDraws) -> None:
         import multiprocessing as mp
 
         self.cfg = cfg
+        self.draws = draws
         self.robot = str(cfg.train.controller)
         self.num_envs = int(cfg.train.num_envs)
         self.workers = max(1, min(int(workers), self.num_envs))
@@ -507,17 +555,21 @@ class ShardedEnvs:
             self.processes.append(process)
 
     def _call(self, messages: list[tuple[str, object]]) -> list:
-        for conn, message in zip(self.conns, messages):
-            conn.send(message)
-        replies = [conn.recv() for conn in self.conns]
-        errors = [payload for status, payload in replies if status == "error"]
+        replies = self._call_some(dict(enumerate(messages)))
+        return [replies[w] for w in range(len(messages))]
+
+    def _call_some(self, messages: dict[int, tuple[str, object]]) -> dict:
+        for worker, message in messages.items():
+            self.conns[worker].send(message)
+        replies = {worker: self.conns[worker].recv() for worker in messages}
+        errors = [payload for status, payload in replies.values() if status == "error"]
         if errors:
             raise RuntimeError("a training worker failed:\n" + errors[0])
-        return [payload for _, payload in replies]
+        return {worker: payload for worker, (_, payload) in replies.items()}
 
-    def start(self, surfaces: Sequence[str], stage: int) -> np.ndarray:
-        """Put every environment on its surface and start its first episode; returns the
-        observations."""
+    def start(self, surfaces: Sequence[str], position_observation: bool) -> np.ndarray:
+        """Put every environment on its surface and start its first episode (initial states
+        drawn for all environments in ascending order); returns the observations."""
 
         missing = [
             (label, int(row))
@@ -529,21 +581,40 @@ class ShardedEnvs:
         for part, states in zip(parts, self._call([("warm_up", part) for part in parts])):
             for (label, row), state in zip(part, states):
                 self.cache.setdefault(label, {})[row] = state
+        picks = self.draws.draw(np.arange(self.num_envs))
         messages = []
         for ids in self.shards:
             labels = [surfaces[e] for e in ids.tolist()]
             payload = {
                 "surfaces": labels,
                 "env_ids": ids,
-                "stage": int(stage),
                 "cache": {label: self.cache[label] for label in set(labels)},
+                "position_observation": bool(position_observation),
+                "picks": picks[ids],
             }
             messages.append(("start", payload))
         return self._gather(self._call(messages))
 
     def advance(self, raw_action: np.ndarray) -> dict[str, np.ndarray]:
+        """One control step; the finished episodes restart from initial states drawn here,
+        in ascending environment order (``obs`` is the observation after the restarts)."""
+
         replies = self._call([("advance", raw_action[ids]) for ids in self.shards])
-        return {key: self._gather([reply[key] for reply in replies]) for key in replies[0]}
+        result = {key: self._gather([reply[key] for reply in replies]) for key in replies[0]}
+        ended = np.flatnonzero(result["terminated"] | result["truncated"])
+        obs = result["next_obs"].copy()
+        if ended.size:
+            picks = self.draws.draw(ended)
+            messages = {}
+            for worker, ids in enumerate(self.shards):
+                mine = np.flatnonzero(np.isin(ended, ids))
+                if mine.size:
+                    local = np.searchsorted(ids, ended[mine])
+                    messages[worker] = ("restart", (local, picks[mine]))
+            for worker, part in self._call_some(messages).items():
+                obs[self.shards[worker]] = part
+        result["obs"] = obs
+        return result
 
     def _gather(self, parts: list[np.ndarray]) -> np.ndarray:
         first = np.asarray(parts[0])
@@ -646,7 +717,15 @@ def ppo_update(
 # --------------------------------------------------------------------------- #
 # the training loop
 # --------------------------------------------------------------------------- #
-def _policy_blob(cfg: DictConfig, actor, critic, obs_dim: int, update: int) -> dict:
+def _policy_blob(
+    cfg: DictConfig,
+    actor,
+    critic,
+    obs_dim: int,
+    update: int,
+    position_observation: bool,
+    grown_columns: tuple[int, int] | None,
+) -> dict:
     robot = str(cfg.train.controller)
     res = cfg.residuals[robot]
     bound = float(res.bound_action_units if robot == "host" else res.bound_rad)
@@ -655,7 +734,8 @@ def _policy_blob(cfg: DictConfig, actor, critic, obs_dim: int, update: int) -> d
         "obs_dim": int(obs_dim),
         "hidden": [int(h) for h in res.hidden],
         "bound": bound,
-        "position_observation": bool(res.position_observation),
+        "position_observation": bool(position_observation),
+        "grown_columns": None if grown_columns is None else [int(v) for v in grown_columns],
         "surface_observation": bool(res.surface_observation),
         "updates": int(update),
         "description": str(cfg.train.description),
@@ -706,7 +786,10 @@ def train(cfg: DictConfig) -> Path:
         print(f"resuming from {checkpoint} (update {update})", flush=True)
     else:
         (out / "history.jsonl").write_text("")
-    envs = ShardedEnvs(cfg, int(tcfg.workers))
+    draws = InitialStateDraws(cfg, str(tcfg.controller), seed)
+    if blob is not None:
+        draws.rng.bit_generator.state = blob["rng"]["initial_states"]
+    envs = ShardedEnvs(cfg, int(tcfg.workers), draws)
     try:
         return _train_loop(cfg, envs, update, blob, generator, out)
     finally:
@@ -729,24 +812,55 @@ def _train_loop(
     action_dim = int(cfg.robots.host.num_actions) if robot == "host" else 29
     first_update = update
     labels = stage_surfaces(tcfg, env_surfaces, update)
-    obs = envs.start(labels, update)
+    position = stage_position_observation(tcfg, res.position_observation, update)
+    obs = envs.start(labels, position)
+    ppo = tcfg.ppo
+
+    def new_optimizer(actor, critic):
+        return torch.optim.Adam(
+            list(actor.parameters()) + list(critic.parameters()), lr=float(ppo.learning_rate)
+        )
+
+    # the networks: built for the observation of this point of the run, or for the one of
+    # the checkpoint (narrower if the position observation switches on at this stage start)
+    grown: tuple[int, int] | None = None
+    width = int(obs.shape[1])
+    if blob is not None:
+        width = int(blob["obs_dim"])
+        if blob.get("grown_columns"):
+            grown = (int(blob["grown_columns"][0]), int(blob["grown_columns"][1]))
     actor, critic = residual_module.build_actor_critic(
-        obs.shape[1],
+        width,
         action_dim,
         hidden=tuple(int(h) for h in res.hidden),
         initial_log_std=float(res.initial_log_std),
         seed=seed,
     )
-    ppo = tcfg.ppo
-    optimizer = torch.optim.Adam(
-        list(actor.parameters()) + list(critic.parameters()), lr=float(ppo.learning_rate)
-    )
+    optimizer = new_optimizer(actor, critic)
     if blob is not None:
         actor.load_state_dict(blob["actor"])
         critic.load_state_dict(blob["critic"])
         optimizer.load_state_dict(blob["optimizer"])
         torch.set_rng_state(blob["rng"]["torch"])
         generator.set_state(blob["rng"]["generator"])
+
+    def grow_to(width: int):
+        nonlocal actor, critic, optimizer, grown
+        current = actor.body[0].in_features
+        if width == current:
+            return
+        if grown is not None or width < current:
+            raise ValueError(f"cannot change the observation width from {current} to {width}")
+        # the inserted columns go before the last input (the progress of the trial)
+        grown = (current - 1, width - current)
+        state = optimizer.state_dict()
+        residual_module.grow_networks(actor, critic, *grown)
+        optimizer = new_optimizer(actor, critic)
+        optimizer.load_state_dict(
+            residual_module.grow_optimizer_state(state, actor, critic, *grown)
+        )
+
+    grow_to(int(obs.shape[1]))
     history = (out / "history.jsonl").open("a")
     steps = int(tcfg.rollout_steps)
     gamma = float(ppo.gamma)
@@ -754,7 +868,9 @@ def _train_loop(
         while update < int(tcfg.updates):
             if update in stage_starts(tcfg) and update > first_update:
                 labels = stage_surfaces(tcfg, env_surfaces, update)
-                obs = envs.start(labels, update)
+                position = stage_position_observation(tcfg, res.position_observation, update)
+                obs = envs.start(labels, position)
+                grow_to(int(obs.shape[1]))
             started = time.time()
             buffer = {k: [] for k in ("obs", "actions", "logp", "values", "rewards", "dones")}
             finished = []
@@ -835,17 +951,20 @@ def _train_loop(
                 flush=True,
             )
             if update % int(tcfg.checkpoint_every) == 0 or update == int(tcfg.updates):
-                blob = _policy_blob(cfg, actor, critic, obs.shape[1], update)
+                blob = _policy_blob(cfg, actor, critic, obs.shape[1], update, position, grown)
                 blob["optimizer"] = optimizer.state_dict()
                 blob["rng"] = {
                     "torch": torch.get_rng_state(),
                     "generator": generator.get_state(),
+                    "initial_states": envs.draws.rng.bit_generator.state,
                 }
                 path = out / "checkpoints" / f"update_{update:06d}.pt"
                 torch.save(blob, path.with_suffix(".part"))
                 os.replace(path.with_suffix(".part"), path)
         final = out / "policy.pt"
-        torch.save(_policy_blob(cfg, actor, critic, obs.shape[1], update), final)
+        torch.save(
+            _policy_blob(cfg, actor, critic, obs.shape[1], update, position, grown), final
+        )
         return final
     finally:
         history.close()
@@ -853,6 +972,12 @@ def _train_loop(
 
 def main(argv: list[str] | None = None) -> int:
     cfg = config.load(sys.argv[1:] if argv is None else list(argv), config_name="training")
+    limit = cfg.train.get("omp_thread_limit")
+    if limit is not None:
+        # read by the OpenMP runtime when torch loads, so set before the first torch import
+        if "torch" in sys.modules:
+            raise RuntimeError("train.omp_thread_limit must be set before torch is imported")
+        os.environ["OMP_THREAD_LIMIT"] = str(int(limit))
     path = train(cfg)
     print(f"policy written to {path}")
     return 0

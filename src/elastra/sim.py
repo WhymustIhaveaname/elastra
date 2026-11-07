@@ -57,7 +57,7 @@ class Batch:
         control_dt: float,
         criterion: DictConfig,
         threads: int = 1,
-        task_area_every_physics_step: bool = True,
+        task_area_every_physics_step: bool | None = None,
     ) -> None:
         self.scenes = list(scenes)
         self.n = len(self.scenes)
@@ -70,6 +70,8 @@ class Batch:
         if not math.isclose(self.decimation * self.physics_dt, float(control_dt), abs_tol=1e-12):
             raise ValueError(f"control step {control_dt} is not a multiple of {physics_dt}")
         self.criterion = criterion
+        if task_area_every_physics_step is None:
+            task_area_every_physics_step = bool(criterion.task_area_every_physics_step[self.robot])
         self.task_area_every_physics_step = bool(task_area_every_physics_step)
         # environments grouped by compiled model, in order of first appearance
         self.groups: list[tuple[Scene, np.ndarray]] = []

@@ -199,6 +199,9 @@ class TaskArea:
         self.local_half = np.abs(aabb[:, 3:])
         self.half = np.asarray(cfg.task_area_half_extents_m, dtype=np.float64)
         self.tolerance = float(cfg.task_area_tolerance_m)
+        self.rule = str(cfg.task_area_rule[scene.robot])
+        if self.rule not in ("bounding_box", "geom_centre"):
+            raise ValueError(f"unknown task-area rule {self.rule!r}")
         self.first_exit_step: int | None = None
         self.minimum_margin = math.inf
 
@@ -226,6 +229,21 @@ class TaskArea:
         )
 
     def observe(self, data: mujoco.MjData, physics_step: int) -> None:
+        if self.rule == "geom_centre":
+            xy = np.asarray(data.geom_xpos[self.geoms, :2], dtype=np.float64)
+            outside = bool(
+                np.any(np.abs(xy[:, 0]) > self.half[0]) or np.any(np.abs(xy[:, 1]) > self.half[1])
+            )
+            margin = float(
+                min(
+                    np.min(self.half[0] - np.abs(xy[:, 0])),
+                    np.min(self.half[1] - np.abs(xy[:, 1])),
+                )
+            )
+            self.minimum_margin = min(self.minimum_margin, margin)
+            if self.first_exit_step is None and outside:
+                self.first_exit_step = int(physics_step)
+            return
         x_min, x_max, y_min, y_max = self.bounds(data)
         margin = float(
             min(
