@@ -11,7 +11,7 @@ evaluation:
 # output directories of elastra-train (each holds history.jsonl and config.yaml)
 training:
   host: outputs/train/host
-  protomotions: outputs/train/protomotions_curriculum
+  protomotions: outputs/train/protomotions
 # the surface of panel (b) of the HoST figure
 softest_mattress: mattress/a1
 # the training curves pool the episodes of this many consecutive updates per point

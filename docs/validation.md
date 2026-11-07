@@ -2,37 +2,27 @@
 
 This page reports three checks of the surface models and of the evaluation, all computed with the code and configuration of this repository:
 
-1. the success counts of the earlier residual policies (below) and of the original controllers on every surface, with the penetration depth measured in every trial;
+1. the success counts of the residual policies in `checkpoints/` and of the original controllers on every surface, with the penetration depth measured in every trial;
 2. the load response of the surfaces and the success counts when the physics step is halved and quartered;
 3. the load response and the success counts when the grid spacing of the mattress and of the trampoline is halved.
 
-No policy was retrained for any of these runs.
-
-The residual policies on this page are the earlier ones, released in commit `303f0c0` as `checkpoints/host_residual.pt` and `checkpoints/protomotions_residual.pt`.
-They were trained with an earlier implementation of the training code, with the surface counts of the training configurations of this repository:
-the HoST residual for 500 PPO updates without the position observation, then for 500 more updates with the position observation added (the weights of the new inputs starting at zero) and mattresses `a16`, `a32`, `a64` replaced by `a1`, `a2`, `a4`;
-the ProtoMotions residual for 500 updates without that replacement.
-That training differs from the one of this repository in the mattress (a densification term and an extra load per cell), in the rigid ground (cells held by equality constraints) and, for ProtoMotions, in the task-area rule (geom centres); [results.md](results.md#comparison-with-the-earlier-training) lists the differences and measures their effect.
-In the tables, "+ residual" means these earlier policies.
-The files in `checkpoints/` are now the policies trained with the code of this repository; their results are in [results.md](results.md).
-`git checkout 303f0c0 -- checkpoints/` restores the earlier policies (`git checkout HEAD -- checkpoints/` returns to the current ones).
-
+No policy was retrained for any of these runs; [results.md](results.md) reports how the policies were trained.
 The mattress is compared with a measured load-deflection curve in [mattress_calibration.md](mattress_calibration.md).
 
 ## Setup
 
-* Controllers: the original HoST controller alone and with the earlier HoST residual policy; the original ProtoMotions tracker alone and with the earlier ProtoMotions residual policy.
+* Controllers: the original HoST controller alone and with the HoST residual policy; the original ProtoMotions tracker alone and with the ProtoMotions residual policy.
 * Initial states (`data/README.md`): HoST runs its 96 test states (48 prone, 48 supine) on every surface, ProtoMotions its 40 test initial states.
 * Surfaces: mattresses `a1` ... `a64`, trampolines `a1`, `a2`, rigid ground.
 * Success: the pelvis is at least 0.7 m above the support surface under the robot's lowest collision point and the pelvis z axis has a world-z component of at least 0.9, without interruption for 1 s, before the robot leaves the task area (`conf/criterion/standing.yaml`).
 * Penetration (`src/elastra/penetration.py`): once per control step, the larger of the *contact depth* (the deepest MuJoCo contact between a robot collision geom and the surface) and, on the trampoline, the *membrane crossing depth* (how far the deepest robot point lies below the membrane's top surface).
   A trial has a *sustained penetration* when the depth exceeds 5 mm for at least 10 consecutive control steps (0.2 s) while the robot is in the task area; such a trial is invalid, and "success without sustained penetration" counts the valid successes.
 * Default discretisation: grid spacing 0.1 m (cell pitch of the mattress, node spacing of the trampoline), physics step 0.625 ms (1600 Hz), control step 20 ms.
-* The evaluation runs used one machine (Intel Xeon 6728P); the load-response runs and the diagnostic reruns used an AMD Ryzen 9 9950X3D.
-  A run is reproduced bit for bit on the same machine; on another CPU model the last bits of the trajectories differ and a few outcomes can change.
-  Of five evaluation runs repeated on the AMD machine, four gave the same counts (HoST on mattress `a2` and on rigid ground, HoST + residual on trampoline `a1`, ProtoMotions + residual on rigid ground, ProtoMotions on trampoline `a2` at 0.3125 ms) and one gave 12 instead of 14 successes (ProtoMotions + residual on mattress `a8`).
+* Machines: the runs at the default discretisation (except ProtoMotions + residual) and the HoST + residual runs at the smaller physics steps used an Intel Xeon Gold 6258R; all other evaluation runs an Intel Xeon 6728P; the load-response runs and the diagnostic rerun of section 1 an AMD Ryzen 9 9950X3D.
+  The original HoST controller gives the same outcome in every trial on the two Intel machines at the default discretisation.
+  A run is reproduced bit for bit on the same machine; on another CPU model the last bits of a trajectory can differ and a few outcomes can change (the diagnostic rerun of section 1 finds 20 instead of 18 trials with a sustained penetration for HoST with the residual policy on trampoline `a2`).
 
-Commands (any `out=` directory; with the earlier policies restored in `checkpoints/`, see above):
+Commands (any `out=` directory):
 
 ```bash
 # success and penetration, default discretisation
@@ -45,6 +35,8 @@ elastra-evaluate ... sim.physics_dt_s=0.0003125
 elastra-evaluate ... sim.physics_dt_s=0.00015625
 elastra-evaluate ... sim.physics_dt_s=0.00015625 mattress=refined trampoline=refined \
     'surfaces=[mattress/a1,mattress/a2,mattress/a4,mattress/a8,mattress/a16,mattress/a32,mattress/a64,trampoline/a1,trampoline/a2]'
+# (ProtoMotions on the refined grids, without rigid ground:
+#  'protomotions_blocks=[[mattress/a1,mattress/a2],[mattress/a64,trampoline/a1],[mattress/a8,mattress/a16,mattress/a32],[trampoline/a2,mattress/a4]]')
 # load response
 elastra-load-response
 elastra-load-response mattress=refined trampoline=refined out=outputs/load_response/refined
@@ -58,9 +50,9 @@ Success (success without sustained penetration), per surface:
 | controller | mattress a1 | a2 | a4 | a8 | a16 | a32 | a64 | trampoline a1 | a2 | rigid |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | HoST | 0 (0) | 3 (3) | 6 (6) | 24 (24) | 51 (51) | 51 (51) | 91 (91) | 53 (52) | 48 (42) | 96 (96) |
-| HoST + residual | 0 (0) | 11 (11) | 51 (51) | 88 (88) | 95 (95) | 96 (96) | 96 (96) | 94 (87) | 93 (80) | 96 (96) |
-| ProtoMotions | 0 (0) | 1 (1) | 1 (1) | 8 (8) | 4 (4) | 13 (13) | 13 (13) | 3 (3) | 3 (3) | 16 (16) |
-| ProtoMotions + residual | 0 (0) | 0 (0) | 1 (1) | 14 (14) | 20 (20) | 18 (18) | 22 (22) | 22 (22) | 24 (24) | 22 (22) |
+| HoST + residual | 1 (1) | 10 (10) | 43 (43) | 90 (90) | 96 (96) | 96 (96) | 95 (95) | 85 (75) | 84 (69) | 96 (96) |
+| ProtoMotions | 0 (0) | 1 (1) | 1 (1) | 9 (9) | 7 (7) | 15 (15) | 16 (16) | 4 (4) | 6 (6) | 17 (17) |
+| ProtoMotions + residual | 0 (0) | 2 (2) | 2 (2) | 10 (10) | 17 (17) | 21 (21) | 17 (17) | 19 (19) | 19 (19) | 19 (19) |
 
 Outcome classes, success / stood but not completed / never stood.
 "Stood" means the standing condition held at some control step:
@@ -68,40 +60,38 @@ Outcome classes, success / stood but not completed / never stood.
 | controller | mattress a1 | a2 | a4 | a8 | a16 | a32 | a64 | trampoline a1 | a2 | rigid |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | HoST | 0 / 31 / 65 | 3 / 54 / 39 | 6 / 52 / 38 | 24 / 52 / 20 | 51 / 45 / 0 | 51 / 45 / 0 | 91 / 5 / 0 | 53 / 41 / 2 | 48 / 38 / 10 | 96 / 0 / 0 |
-| HoST + residual | 0 / 20 / 76 | 11 / 80 / 5 | 51 / 44 / 1 | 88 / 8 / 0 | 95 / 1 / 0 | 96 / 0 / 0 | 96 / 0 / 0 | 94 / 2 / 0 | 93 / 3 / 0 | 96 / 0 / 0 |
-| ProtoMotions | 0 / 0 / 40 | 1 / 7 / 32 | 1 / 6 / 33 | 8 / 6 / 26 | 4 / 7 / 29 | 13 / 4 / 23 | 13 / 4 / 23 | 3 / 5 / 32 | 3 / 6 / 31 | 16 / 4 / 20 |
-| ProtoMotions + residual | 0 / 2 / 38 | 0 / 15 / 25 | 1 / 16 / 23 | 14 / 12 / 14 | 20 / 10 / 10 | 18 / 14 / 8 | 22 / 11 / 7 | 22 / 7 / 11 | 24 / 4 / 12 | 22 / 11 / 7 |
+| HoST + residual | 1 / 39 / 56 | 10 / 76 / 10 | 43 / 52 / 1 | 90 / 6 / 0 | 96 / 0 / 0 | 96 / 0 / 0 | 95 / 1 / 0 | 85 / 11 / 0 | 84 / 12 / 0 | 96 / 0 / 0 |
+| ProtoMotions | 0 / 0 / 40 | 1 / 7 / 32 | 1 / 6 / 33 | 9 / 5 / 26 | 7 / 4 / 29 | 15 / 2 / 23 | 16 / 1 / 23 | 4 / 4 / 32 | 6 / 3 / 31 | 17 / 3 / 20 |
+| ProtoMotions + residual | 0 / 6 / 34 | 2 / 18 / 20 | 2 / 18 / 20 | 10 / 14 / 16 | 17 / 10 / 13 | 21 / 6 / 13 | 17 / 12 / 11 | 19 / 10 / 11 | 19 / 11 / 10 | 19 / 6 / 15 |
 
 Penetration: number of trials with a sustained penetration; per-trial peak depth, median / maximum over the trials (mm):
 
 | controller | mattress a1 | a2 | a4 | a8 | a16 | a32 | a64 | trampoline a1 | a2 | rigid |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | HoST | 0; 1.0 / 4.0 | 0; 1.3 / 2.6 | 0; 1.5 / 3.3 | 0; 1.5 / 3.9 | 0; 2.0 / 5.4 | 0; 2.1 / 5.9 | 0; 2.2 / 5.9 | 10; 3.4 / 68.3 | 24; 4.6 / 65.3 | 0; 0.4 / 1.7 |
-| HoST + residual | 0; 1.2 / 4.7 | 0; 1.5 / 6.1 | 0; 1.7 / 4.2 | 0; 1.9 / 3.6 | 0; 1.7 / 4.1 | 0; 1.8 / 4.1 | 0; 2.1 / 5.9 | 7; 3.3 / 42.2 | 14; 3.9 / 46.6 | 0; 0.6 / 2.4 |
-| ProtoMotions | 0; 0.9 / 2.4 | 0; 1.0 / 2.5 | 0; 1.3 / 3.5 | 0; 1.6 / 4.3 | 0; 1.8 / 3.7 | 0; 2.2 / 5.5 | 0; 2.7 / 7.8 | 0; 2.5 / 37.2 | 0; 2.7 / 16.6 | 0; 0.4 / 1.5 |
-| ProtoMotions + residual | 0; 1.2 / 4.0 | 0; 1.5 / 2.5 | 0; 2.2 / 4.2 | 0; 2.0 / 3.8 | 0; 2.3 / 5.5 | 0; 2.6 / 7.2 | 0; 3.1 / 11.8 | 0; 3.2 / 18.4 | 2; 4.3 / 63.5 | 0; 0.5 / 1.9 |
+| HoST + residual | 0; 1.2 / 3.6 | 0; 1.6 / 6.3 | 0; 1.8 / 4.4 | 0; 1.9 / 4.7 | 0; 1.6 / 4.0 | 0; 1.9 / 4.0 | 0; 2.7 / 5.5 | 14; 3.5 / 37.9 | 18; 4.2 / 40.4 | 0; 0.6 / 1.5 |
+| ProtoMotions | 0; 0.9 / 2.4 | 0; 1.1 / 2.5 | 0; 1.4 / 3.5 | 0; 1.8 / 4.9 | 0; 1.8 / 5.1 | 0; 2.2 / 5.5 | 0; 2.7 / 7.8 | 0; 2.5 / 94.1 | 0; 2.8 / 83.8 | 0; 0.4 / 1.5 |
+| ProtoMotions + residual | 0; 1.1 / 6.7 | 0; 1.8 / 2.9 | 0; 2.2 / 4.2 | 0; 2.0 / 4.7 | 0; 2.0 / 5.4 | 0; 2.6 / 5.9 | 0; 3.4 / 7.1 | 1; 3.4 / 99.1 | 2; 3.7 / 109.6 | 0; 0.5 / 1.5 |
 
 Largest contact depth / largest membrane crossing depth over all trials (mm):
 
 | controller | mattress a1 | a2 | a4 | a8 | a16 | a32 | a64 | trampoline a1 | a2 | rigid |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | HoST | 4.0 / 0.0 | 2.6 / 0.0 | 3.3 / 0.0 | 3.9 / 0.0 | 5.4 / 0.0 | 5.9 / 0.0 | 5.9 / 0.0 | 48.4 / 68.3 | 46.0 / 65.3 | 1.7 / 0.0 |
-| HoST + residual | 4.7 / 0.0 | 6.1 / 0.0 | 4.2 / 0.0 | 3.6 / 0.0 | 4.1 / 0.0 | 4.1 / 0.0 | 5.9 / 0.0 | 8.8 / 42.2 | 10.7 / 46.6 | 2.4 / 0.0 |
-| ProtoMotions | 2.4 / 0.0 | 2.5 / 0.0 | 3.5 / 0.0 | 4.3 / 0.0 | 3.7 / 0.0 | 5.5 / 0.0 | 7.8 / 0.0 | 25.7 / 37.2 | 16.0 / 16.6 | 1.5 / 0.0 |
-| ProtoMotions + residual | 4.0 / 0.0 | 2.5 / 0.0 | 4.2 / 0.0 | 3.8 / 0.0 | 5.5 / 0.0 | 7.2 / 0.0 | 11.8 / 0.0 | 18.4 / 14.7 | 33.3 / 63.5 | 1.9 / 0.0 |
+| HoST + residual | 3.6 / 0.0 | 6.3 / 0.0 | 4.4 / 0.0 | 4.7 / 0.0 | 4.0 / 0.0 | 4.0 / 0.0 | 5.5 / 0.0 | 8.8 / 37.9 | 10.7 / 40.4 | 1.5 / 0.0 |
+| ProtoMotions | 2.4 / 0.0 | 2.5 / 0.0 | 3.5 / 0.0 | 4.9 / 0.0 | 5.1 / 0.0 | 5.5 / 0.0 | 7.8 / 0.0 | 31.2 / 94.1 | 19.1 / 83.8 | 1.5 / 0.0 |
+| ProtoMotions + residual | 6.7 / 0.0 | 2.9 / 0.0 | 4.2 / 0.0 | 4.7 / 0.0 | 5.4 / 0.0 | 5.9 / 0.0 | 7.1 / 0.0 | 29.1 / 99.1 | 58.8 / 109.6 | 1.5 / 0.0 |
 
-On the mattresses and on rigid ground no trial has a sustained penetration; the per-trial peak depth has a median of 0.4 to 3.1 mm and a maximum of 11.8 mm, and the deeper readings last less than 10 control steps.
+On the mattresses and on rigid ground no trial has a sustained penetration; the per-trial peak depth has a median of 0.4 to 3.4 mm and a maximum of 7.8 mm, and the readings above 5 mm last at most 2 consecutive control steps.
 
-On the trampolines HoST has sustained penetrations in 10 and 24 trials (original controller, trampolines `a1` and `a2`) and in 7 and 14 trials (with the residual).
-In these trials the contact depth is at most 7.5 mm; the penetration is a membrane crossing.
+On the trampolines HoST has sustained penetrations in 10 and 24 trials (original controller, trampolines `a1` and `a2`) and in 14 and 18 trials (with the residual).
+In these trials the contact depth is at most 8.5 mm; the penetration is a membrane crossing.
 HoST's feet collide through nine spheres of radius 5 mm each, and the membrane's collision surface is a flex of radius 2 mm.
 When the centre of a foot sphere passes below the membrane's mid-surface, MuJoCo's two-sided flex contact pushes the sphere further down, and the foot stays below the membrane.
-A diagnostic rerun of HoST on both trampolines (on the AMD machine; 10, 24, 6 and 13 trials with a sustained penetration) recorded the robot body of the deepest point: of the 5995 control steps with more than 5 mm of crossing depth in those trials, 5985 belong to a foot sphere, and in 5980 the centre of that sphere was below the membrane's mid-surface.
-The ProtoMotions G1 has capsule feet of radius 8 to 10 mm; it has two trials with a sustained penetration (with the residual, trampoline `a2`), in which the contact depth itself reaches 12.8 and 33.3 mm.
+A diagnostic rerun of HoST on both trampolines (on the AMD machine; 10, 24, 14 and 20 trials with a sustained penetration) recorded the robot body of the deepest point: of the 8119 control steps with more than 5 mm of crossing depth in those trials, 8103 belong to a foot sphere, and in 8099 the centre of that sphere was below the membrane's mid-surface.
+The ProtoMotions G1 has capsule feet of radius 8 to 10 mm; it has three trials with a sustained penetration (with the residual: test initial state `fall_22` on both trampolines, `fall_35` on trampoline `a2`), in which the contact depth itself reaches 29.1, 58.8 and 29.0 mm; none of the three completes the hold.
 
-One ProtoMotions test initial state (`fall_03`) slides 0.13 m on rigid ground while it is settled under the gravity ramp and starts 1 cm outside the task area; it is a failure for both ProtoMotions rows on rigid ground.
-
-The HoST outcome classes on the soft mattresses are the three classes of the paper's HoST figure: on mattress `a1` the original controller never stands in 65 trials and stands without completing the hold in 31; with the earlier residual policy the counts are 76 and 20.
+The HoST outcome classes on the soft mattresses are the three classes of the paper's HoST figure: on mattress `a1` the original controller never stands in 65 trials and stands without completing the hold in 31; with the residual policy the counts are 56 and 39, and 1 trial succeeds.
 
 ## 2. Physics step
 
@@ -145,44 +135,45 @@ HoST + residual:
 
 | grid, physics step | mattress a1 | a2 | a4 | a8 | a16 | a32 | a64 | trampoline a1 | a2 | rigid |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0.1 m, 0.625 ms | 0 (0) | 11 (11) | 51 (51) | 88 (88) | 95 (95) | 96 (96) | 96 (96) | 94 (87) | 93 (80) | 96 (96) |
-| 0.1 m, 0.3125 ms | 0 (0) | 12 (12) | 45 (45) | 87 (87) | 94 (94) | 96 (96) | 96 (96) | 93 (93) | 94 (92) | 96 (96) |
-| 0.1 m, 0.15625 ms | 2 (2) | 11 (11) | 50 (50) | 87 (87) | 96 (96) | 96 (96) | 96 (96) | 94 (94) | 94 (94) | 96 (96) |
-| 0.05 m, 0.15625 ms | 3 (3) | 17 (17) | 40 (40) | 84 (84) | 96 (96) | 96 (96) | 96 (96) | 82 (80) | 45 (24) |  |
+| 0.1 m, 0.625 ms | 1 (1) | 10 (10) | 43 (43) | 90 (90) | 96 (96) | 96 (96) | 95 (95) | 85 (75) | 84 (69) | 96 (96) |
+| 0.1 m, 0.3125 ms | 3 (3) | 8 (8) | 42 (42) | 87 (87) | 96 (96) | 96 (96) | 96 (96) | 88 (88) | 90 (90) | 96 (96) |
+| 0.1 m, 0.15625 ms | 5 (5) | 14 (14) | 47 (47) | 90 (90) | 96 (96) | 96 (96) | 96 (96) | 91 (91) | 91 (91) | 96 (96) |
+| 0.05 m, 0.15625 ms | 5 (5) | 11 (11) | 42 (42) | 94 (94) | 96 (96) | 96 (96) | 96 (96) | 77 (61) | 47 (32) |  |
 
 ProtoMotions:
 
 | grid, physics step | mattress a1 | a2 | a4 | a8 | a16 | a32 | a64 | trampoline a1 | a2 | rigid |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0.1 m, 0.625 ms | 0 (0) | 1 (1) | 1 (1) | 8 (8) | 4 (4) | 13 (13) | 13 (13) | 3 (3) | 3 (3) | 16 (16) |
-| 0.1 m, 0.3125 ms | 0 (0) | 0 (0) | 0 (0) | 6 (6) | 8 (8) | 12 (12) | 13 (13) | 3 (2) | 5 (5) | 17 (17) |
-| 0.1 m, 0.15625 ms | 1 (1) | 0 (0) | 0 (0) | 5 (5) | 9 (9) | 11 (11) | 13 (13) | 2 (2) | 4 (4) | 16 (16) |
-| 0.05 m, 0.15625 ms | 0 (0) | 1 (1) | 1 (1) | 3 (3) | 6 (6) | 9 (9) | 13 (13) | 1 (1) | 5 (5) |  |
+| 0.1 m, 0.625 ms | 0 (0) | 1 (1) | 1 (1) | 9 (9) | 7 (7) | 15 (15) | 16 (16) | 4 (4) | 6 (6) | 17 (17) |
+| 0.1 m, 0.3125 ms | 0 (0) | 0 (0) | 0 (0) | 7 (7) | 10 (10) | 13 (13) | 17 (17) | 3 (2) | 8 (8) | 19 (19) |
+| 0.1 m, 0.15625 ms | 1 (1) | 0 (0) | 0 (0) | 5 (5) | 9 (9) | 12 (12) | 15 (15) | 3 (3) | 7 (7) | 19 (19) |
+| 0.05 m, 0.15625 ms | 0 (0) | 2 (2) | 1 (1) | 3 (3) | 7 (7) | 13 (13) | 16 (16) | 2 (2) | 7 (7) |  |
 
 ProtoMotions + residual:
 
 | grid, physics step | mattress a1 | a2 | a4 | a8 | a16 | a32 | a64 | trampoline a1 | a2 | rigid |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0.1 m, 0.625 ms | 0 (0) | 0 (0) | 1 (1) | 14 (14) | 20 (20) | 18 (18) | 22 (22) | 22 (22) | 24 (24) | 22 (22) |
-| 0.1 m, 0.3125 ms | 0 (0) | 0 (0) | 1 (1) | 11 (11) | 22 (22) | 23 (23) | 24 (24) | 22 (22) | 22 (22) | 23 (23) |
-| 0.1 m, 0.15625 ms | 0 (0) | 0 (0) | 0 (0) | 13 (13) | 19 (19) | 25 (25) | 23 (23) | 23 (23) | 23 (23) | 19 (19) |
-| 0.05 m, 0.15625 ms | 0 (0) | 0 (0) | 4 (4) | 13 (13) | 22 (22) | 22 (22) | 23 (23) | 15 (15) | 22 (22) |  |
+| 0.1 m, 0.625 ms | 0 (0) | 2 (2) | 2 (2) | 10 (10) | 17 (17) | 21 (21) | 17 (17) | 19 (19) | 19 (19) | 19 (19) |
+| 0.1 m, 0.3125 ms | 0 (0) | 0 (0) | 5 (5) | 12 (12) | 17 (17) | 21 (21) | 17 (17) | 17 (17) | 20 (20) | 15 (15) |
+| 0.1 m, 0.15625 ms | 0 (0) | 3 (3) | 4 (4) | 12 (12) | 19 (19) | 23 (23) | 19 (19) | 19 (17) | 21 (21) | 21 (21) |
+| 0.05 m, 0.15625 ms | 0 (0) | 1 (1) | 5 (5) | 14 (14) | 16 (16) | 21 (21) | 17 (17) | 12 (12) | 17 (17) |  |
 
 Trials with a sustained penetration, summed over the ten surfaces (nine on the 0.05 m grid, which has no rigid ground):
 
 | controller | 0.1 m, 0.625 ms | 0.1 m, 0.3125 ms | 0.1 m, 0.15625 ms | 0.05 m, 0.15625 ms |
 | --- | ---: | ---: | ---: | ---: |
 | HoST | 34 | 1 | 2 | 94 |
-| HoST + residual | 21 | 2 | 0 | 83 |
-| ProtoMotions | 0 | 2 | 0 | 0 |
-| ProtoMotions + residual | 2 | 1 | 1 | 0 |
+| HoST + residual | 32 | 0 | 0 | 95 |
+| ProtoMotions | 0 | 2 | 0 | 1 |
+| ProtoMotions + residual | 3 | 2 | 6 | 1 |
 
-On the 0.1 m grid, halving or quartering the physics step changes the success count of a surface by at most 10 of 96 trials for HoST (trampoline `a2`, 48 to 58), 6 of 96 with the residual (mattress `a4`, 51 to 45), 5 of 40 for ProtoMotions (mattress `a16`, 4 to 9) and 7 of 40 with the residual (mattress `a32`, 18 to 25).
-Summed over the ten surfaces the counts are 423, 442 and 435 of 960 (HoST), 720, 713 and 722 (HoST + residual), 62, 64 and 61 of 400 (ProtoMotions) and 143, 148 and 145 (ProtoMotions + residual) at 0.625, 0.3125 and 0.15625 ms.
-At every physics step and on every surface the residual policy has at least as many successes as its original controller, except ProtoMotions on the softest mattresses, where the original controller has one success and the residual none (mattress `a2` at 0.625 ms, `a1` at 0.15625 ms).
+On the 0.1 m grid, halving or quartering the physics step changes the success count of a surface by at most 10 of 96 trials for HoST (trampoline `a2`, 48 to 58), 7 of 96 with the residual (trampoline `a2`, 84 to 91), 4 of 40 for ProtoMotions (mattress `a8`, 9 to 5) and 4 of 40 with the residual (rigid ground, 19 to 15).
+Summed over the ten surfaces the counts are 423, 442 and 435 of 960 (HoST), 696, 702 and 722 (HoST + residual), 76, 77 and 71 of 400 (ProtoMotions) and 126, 124 and 141 (ProtoMotions + residual) at 0.625, 0.3125 and 0.15625 ms.
+At every physics step and on every surface the residual policy has at least as many successes as its original controller, except ProtoMotions on rigid ground at 0.3125 ms (15 against 19) and on mattress `a1` at 0.15625 ms (0 against 1).
+All sustained penetrations of ProtoMotions at the three physics steps are on the trampolines.
 
-The sustained penetrations of HoST on the trampolines (the foot spheres crossing the membrane, section 1) depend on the physics step: 34 and 21 trials at 0.625 ms, at most 2 at the smaller steps.
-On the trampolines the counts of successes without a sustained penetration therefore rise with the smaller steps (HoST + residual on trampoline `a2`: 80, 92, 94).
+The sustained penetrations of HoST on the trampolines (the foot spheres crossing the membrane, section 1) depend on the physics step: 34 and 32 trials at 0.625 ms, at most 2 at the smaller steps.
+On the trampolines the counts of successes without a sustained penetration therefore rise with the smaller steps (HoST + residual on trampoline `a2`: 69, 90, 91).
 
 ## 3. Grid spacing
 
@@ -234,11 +225,11 @@ It is the same for all seven beds (their b / k is equal) and shorter than the 0.
 
 ### Success counts
 
-See the table of section 2: rows "0.05 m, 0.15625 ms", compared with "0.1 m, 0.15625 ms".
+See the tables of section 2: rows "0.05 m, 0.15625 ms", compared with "0.1 m, 0.15625 ms".
 
-Compared with the 0.1 m grid at the same physics step (0.15625 ms), the ProtoMotions counts on the 0.05 m grid change by at most 3 trials per surface (original controller) and by at most 4 per mattress (with the residual); with the residual the count on trampoline `a1` falls from 23 to 15.
-HoST changes by at most 4 trials on mattresses `a1`, `a2`, `a4`, `a8` and `a64` and falls from 56 to 37 on `a16` and from 52 to 45 on `a32`; with the residual it changes by at most 6 trials on the mattresses except `a4` (50 to 40).
+Compared with the 0.1 m grid at the same physics step (0.15625 ms), the ProtoMotions counts on the 0.05 m grid change by at most 2 trials per surface (original controller) and by at most 3 per mattress (with the residual); with the residual the counts on the trampolines fall from 19 to 12 (`a1`) and from 21 to 17 (`a2`).
+HoST changes by at most 4 trials on mattresses `a1`, `a2`, `a4`, `a8` and `a64` and falls from 56 to 37 on `a16` and from 52 to 45 on `a32`; with the residual it changes by at most 5 trials on the mattresses (mattress `a4`, 47 to 42).
 
-On the trampolines the HoST counts fall from 56 to 20 and from 54 to 27 (original controller, trampolines `a1` and `a2`) and from 94 to 82 and from 94 to 45 (with the residual), and the trials with a sustained penetration rise from 2 and 0 to 94 and 83 of the 192 trampoline trials (the largest contact depth in these trials is 12.3 and 19.0 mm).
-ProtoMotions, whose feet are capsules, has no sustained penetration on the 0.05 m grid.
+On the trampolines the HoST counts fall from 56 to 20 and from 54 to 27 (original controller, trampolines `a1` and `a2`) and from 91 to 77 and from 91 to 47 (with the residual), and the trials with a sustained penetration rise from 2 and 0 to 94 and 95 of the 192 trampoline trials (the largest contact depth in these trials is 12.3 and 17.6 mm).
+ProtoMotions, whose feet are capsules, has one trial with a sustained penetration on the 0.05 m grid with each controller (on a trampoline, in a trial that never stands), against 0 and 6 on the 0.1 m grid at 0.15625 ms.
 For HoST the trampoline results are therefore not converged in the grid spacing.

@@ -260,7 +260,7 @@ def training_figure(cfg, out: Path) -> Path:
         ),
     ]
     runs = list(cfg.training.items())
-    fig, axes = plt.subplots(len(runs), 1, figsize=(7.4, 2.5 * len(runs)), dpi=200, sharex=True)
+    fig, axes = plt.subplots(len(runs), 1, figsize=(7.4, 2.5 * len(runs)), dpi=200)
     axes = np.atleast_1d(axes)
     for ax, (robot, path) in zip(axes, runs):
         history = _history(path)
@@ -286,12 +286,15 @@ def training_figure(cfg, out: Path) -> Path:
                 continue
             replaced = ", ".join(Surface.parse(str(a)).name for a in stage.replace)
             added = ", ".join(Surface.parse(str(b)).name for b in stage.replace.values())
+            note = f"from update {update}:\nmattresses {replaced} replaced by {added}"
+            if stage.get("position_observation"):
+                note += ",\nposition observation added"
             ax.axvline(update, color=MUTED, linewidth=0.8, zorder=0)
             ax.annotate(
-                f"from update {update}: mattresses {replaced} replaced by {added}",
-                xy=(update, 1.0),
+                note,
+                xy=(update, 0.27),
                 xycoords=("data", "axes fraction"),
-                xytext=(4, 3),
+                xytext=(14, 0),
                 textcoords="offset points",
                 ha="left",
                 va="bottom",
@@ -303,10 +306,10 @@ def training_figure(cfg, out: Path) -> Path:
         ax.set_ylabel("successful episodes\n(fraction)", fontsize=8, color=INK)
         ax.yaxis.grid(True, color=GRID, linewidth=0.6, zorder=0)
         ax.set_title(f"{NAMES[robot]} residual policy training", loc="left", fontsize=9, color=INK)
+        ax.set_xlabel(
+            f"PPO update (each point: the {window} updates up to it)", fontsize=8, color=INK
+        )
         _style(ax)
-    axes[-1].set_xlabel(
-        f"PPO update (each point: the {window} updates up to it)", fontsize=8, color=INK
-    )
     axes[0].legend(
         ncol=2,
         fontsize=8,

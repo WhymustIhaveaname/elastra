@@ -48,6 +48,7 @@ The grid spacing of both surfaces is 0.1 m (cell pitch, node spacing).
 ## Success and penetration
 
 A trial succeeds when the robot stands for 1 s without interruption before it leaves the task area (the 2.0 m x 1.9 m mattress footprint, for every surface).
+With HoST the robot has left the task area when the bounding box of any of its collision geoms crosses the boundary, checked after every physics step; with ProtoMotions when the centre of any of its collision geoms lies outside, checked once per control step (`conf/criterion/standing.yaml`).
 Standing: the pelvis is at least 0.7 m above the support surface under the robot's lowest collision point, and the pelvis z axis has a world-z component of at least 0.9 (`src/elastra/success.py`, `conf/criterion/standing.yaml`).
 
 Penetration is the depth of the robot's collision geometry in the deformed surface, once per control step: the deepest MuJoCo contact, and on the trampoline also how far any robot point lies below the membrane.
@@ -73,13 +74,15 @@ Any configuration value can be overridden on the command line, for example the p
 
 ```bash
 uv run elastra-train                                   # HoST, conf/train/host.yaml
-uv run elastra-train train=protomotions                # ProtoMotions
-uv run elastra-train train=protomotions_curriculum     # ProtoMotions, mattresses a1, a2, a4 from update 500
+uv run elastra-train train=protomotions                # ProtoMotions, conf/train/protomotions.yaml
 ```
 
 PPO on 256 environments; the training configurations (surfaces of the parallel environments, curriculum, PPO and reward settings) are in `conf/train/`.
+HoST trains in two stages of 500 updates: mattresses `a8` to `a64`, rigid ground and both trampolines without the position observation, then with it (its input weights starting at zero) and with the environments of mattresses `a16`, `a32`, `a64` moved to `a1`, `a2`, `a4`.
+ProtoMotions trains for 500 updates on the surfaces of the first HoST stage.
+The initial state of every new episode is drawn in the main process from one generator seeded with the training seed, so a run does not depend on the number of worker processes.
 One update steps 256 environments for 64 control steps (524288 physics steps); `train.workers` sets the number of worker processes that step them (the result does not depend on it).
-With 48 workers on an Intel Xeon 6728P an update takes about 21 s (HoST) or 16 s (ProtoMotions), and the 1000 updates of a run take 5.8 h or 4.5 h.
+With 48 workers on an Intel Xeon Gold 6258R a HoST update takes about 20 s (5.7 h for 1000 updates); with 32 workers on a shared Intel Xeon 6728P a ProtoMotions update took about 24 s (3.4 h for 500 updates).
 The run writes `history.jsonl`, checkpoints and the final `policy.pt` to `train.out`; evaluate it with `policy=<path>/policy.pt`.
 The same command continues an interrupted run from its latest checkpoint (`train.resume`).
 
@@ -104,14 +107,14 @@ The mattress has no nonlinear compression term.
 
 ## Results
 
-The policies in `checkpoints/` are the HoST run (`conf/train/host.yaml`) and the ProtoMotions run with the curriculum (`conf/train/protomotions_curriculum.yaml`) of the commands above.
+The policies in `checkpoints/` are the HoST run (`conf/train/host.yaml`) and the ProtoMotions run (`conf/train/protomotions.yaml`) of the commands above.
 [docs/results.md](docs/results.md) reports their training and their evaluation.
-With its residual policy HoST succeeds in 678 of 960 test trials (423 with the original controller, 720 with the earlier residual policy of [docs/validation.md](docs/validation.md)), and the ProtoMotions tracker in 82 of 400 (62 with the original controller, 143 with the earlier residual policy).
-The same page compares the training with the earlier one: the two agree item by item except for their random numbers and three deliberate changes (a linear mattress, rigid ground of fixed boxes, and for ProtoMotions a task-area rule on bounding boxes), and the gaps lie within the spread between training seeds (a second seed of the HoST curriculum stage gives 735 of 960; ProtoMotions runs of 500 updates give 95 to 128 of 400).
+With its residual policy HoST succeeds in 696 of 960 test trials (423 with the original controller), and the ProtoMotions tracker in 126 of 400 (76 with the original controller).
+On another CPU model a few of these outcomes can change ([docs/validation.md](docs/validation.md#setup)).
 
 ## Validation
 
-[docs/validation.md](docs/validation.md): success counts of the earlier residual policies (released in commit `303f0c0`), penetration depth on every surface, and the dependence of the load response and of the success counts on the physics step and the grid spacing.
+[docs/validation.md](docs/validation.md): penetration depth on every surface, and the dependence of the load response and of the success counts of the policies in `checkpoints/` and of the original controllers on the physics step and the grid spacing.
 [docs/mattress_calibration.md](docs/mattress_calibration.md): the mattress against a measured load-deflection curve.
 
 ## Repository layout

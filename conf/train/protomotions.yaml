@@ -44,8 +44,8 @@ reward:
 task_area_every_physics_step: false
 # worker processes that step the environments (environment e on worker e mod workers)
 workers: 32
-# threads of the PPO update, under an OpenMP thread limit (OMP_THREAD_LIMIT) as in the
-# earlier training's environment
+# threads of the PPO update, under an OpenMP thread limit (OMP_THREAD_LIMIT); the policy in
+# checkpoints/ was trained with these values
 torch_threads: 2
 omp_thread_limit: 1
 checkpoint_every: 10
