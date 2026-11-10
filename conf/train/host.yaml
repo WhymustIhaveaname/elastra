@@ -62,6 +62,8 @@ workers: 32
 # threads of the PPO update
 torch_threads: 2
 checkpoint_every: 10
+# policy.pt: the networks of the last update
+policy_checkpoint: last
 # continue from the latest checkpoint in `out` if there is one (every environment restarts)
 resume: true
 out: outputs/train/host

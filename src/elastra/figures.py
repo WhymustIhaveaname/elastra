@@ -28,6 +28,7 @@ from omegaconf import OmegaConf
 
 from elastra import config
 from elastra.scene import Surface
+from elastra.training import best_training_checkpoint
 
 # Okabe-Ito colours
 ORANGE = "#E69F00"
@@ -293,6 +294,26 @@ def training_figure(cfg, out: Path) -> Path:
             ax.annotate(
                 note,
                 xy=(update, 0.27),
+                xycoords=("data", "axes fraction"),
+                xytext=(14, 0),
+                textcoords="offset points",
+                ha="left",
+                va="bottom",
+                fontsize=7,
+                color=MUTED,
+            )
+        if str(run.train.get("policy_checkpoint", "last")) == "best_training_success":
+            every = int(run.train.checkpoint_every)
+            best = best_training_checkpoint(
+                history,
+                list(range(every, len(history) + 1, every)),
+                int(run.train.policy_window),
+            )
+            ax.axvline(best, color=MUTED, linewidth=0.8, zorder=0)
+            ax.annotate(
+                f"policy.pt: update {best}, the checkpoint with the\nhighest success rate "
+                f"over the {int(run.train.policy_window)} updates up to it",
+                xy=(best, 0.06),
                 xycoords=("data", "axes fraction"),
                 xytext=(14, 0),
                 textcoords="offset points",

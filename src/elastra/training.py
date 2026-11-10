@@ -7,8 +7,11 @@
 
 The run writes to ``train.out``: ``config.yaml``, ``history.jsonl`` (one line per
 update: reward, finished episodes and successes per surface, PPO statistics),
-``checkpoints/update_*.pt`` every ``train.checkpoint_every`` updates and the final
-``policy.pt``, which ``elastra-evaluate policy=...`` reads.
+``checkpoints/update_*.pt`` every ``train.checkpoint_every`` updates and
+``policy.pt``, which ``elastra-evaluate policy=...`` reads.  ``policy.pt`` holds the
+networks of the last update (``train.policy_checkpoint=last``) or of the saved
+checkpoint with the highest success rate of the training episodes
+(``best_training_success``, :func:`best_training_checkpoint`).
 
 With ``train.resume=true`` (the default) a run whose ``train.out`` already holds
 checkpoints continues from the latest one: networks, optimiser and random number
@@ -749,6 +752,31 @@ def latest_checkpoint(out: Path) -> Path | None:
     return paths[-1] if paths else None
 
 
+def best_training_checkpoint(history: list[dict], checkpoints: list[int], window: int) -> int:
+    """The saved update with the highest success rate of the training episodes.
+
+    ``history`` are the lines of ``history.jsonl``, ``checkpoints`` the updates that were
+    saved.  The rate of a checkpoint is successes over finished episodes in the ``window``
+    updates up to it; checkpoints before update ``window`` are not considered, and the
+    later checkpoint wins a tie.
+    """
+
+    episodes = {int(row["update"]): int(row["episodes"]) for row in history}
+    successes = {int(row["update"]): int(row["successes"]) for row in history}
+    best, best_rate = None, -1.0
+    for update in sorted(int(u) for u in checkpoints):
+        if update < int(window):
+            continue
+        span = range(update - int(window) + 1, update + 1)
+        finished = sum(episodes[u] for u in span)
+        rate = sum(successes[u] for u in span) / finished if finished else 0.0
+        if rate >= best_rate:
+            best, best_rate = update, rate
+    if best is None:
+        raise ValueError(f"no checkpoint at or after update {window}")
+    return best
+
+
 def _cut_history(path: Path, update: int) -> None:
     """Keep the history lines up to ``update`` (the lines a resumed run will write again
     are dropped)."""
@@ -962,9 +990,26 @@ def _train_loop(
                 torch.save(blob, path.with_suffix(".part"))
                 os.replace(path.with_suffix(".part"), path)
         final = out / "policy.pt"
-        torch.save(
-            _policy_blob(cfg, actor, critic, obs.shape[1], update, position, grown), final
-        )
+        policy = _policy_blob(cfg, actor, critic, obs.shape[1], update, position, grown)
+        if str(tcfg.get("policy_checkpoint", "last")) == "best_training_success":
+            history.flush()
+            rows = [
+                json.loads(line)
+                for line in (out / "history.jsonl").read_text().splitlines()
+                if line.strip()
+            ]
+            saved = [
+                int(path.stem.split("_")[1]) for path in (out / "checkpoints").glob("update_*.pt")
+            ]
+            best = best_training_checkpoint(rows, saved, int(tcfg.policy_window))
+            chosen = torch.load(
+                out / "checkpoints" / f"update_{best:06d}.pt",
+                map_location="cpu",
+                weights_only=True,
+            )
+            policy = {key: chosen[key] for key in policy}
+            print(f"policy.pt: update {best}, the highest training success rate", flush=True)
+        torch.save(policy, final)
         return final
     finally:
         history.close()

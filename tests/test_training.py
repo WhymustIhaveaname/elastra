@@ -6,6 +6,7 @@ import torch
 from elastra import config, residual
 from elastra.training import (
     _cut_history,
+    best_training_checkpoint,
     environment_surfaces,
     stage_position_observation,
     stage_surfaces,
@@ -41,6 +42,25 @@ def test_position_observation_starts_with_the_second_host_stage():
     assert pm.train.updates == 500 and not pm.train.curriculum
     pm_base = pm.residuals.protomotions.position_observation
     assert not stage_position_observation(pm.train, pm_base, 0)
+
+
+def test_best_training_checkpoint_is_the_highest_success_rate_over_the_window():
+    # 10 episodes per update; the success rate rises to update 6 and falls afterwards
+    successes = [0, 2, 4, 6, 8, 8, 4, 2]
+    history = [
+        {"update": u, "episodes": 10, "successes": s} for u, s in enumerate(successes, start=1)
+    ]
+    saved = [2, 4, 6, 8]
+    assert best_training_checkpoint(history, saved, 2) == 6
+    assert best_training_checkpoint(history, saved, 4) == 6
+    # a window as long as the run leaves only the last checkpoint
+    assert best_training_checkpoint(history, saved, 8) == 8
+    # the later checkpoint on a tie
+    flat = [{"update": u, "episodes": 10, "successes": 5} for u in range(1, 9)]
+    assert best_training_checkpoint(flat, saved, 2) == 8
+    pm = config.load(["train=protomotions"], config_name="training")
+    assert pm.train.policy_checkpoint == "best_training_success" and pm.train.policy_window == 50
+    assert config.load(["train=host"], config_name="training").train.policy_checkpoint == "last"
 
 
 def test_grown_networks_reproduce_the_narrow_ones():

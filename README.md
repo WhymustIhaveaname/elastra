@@ -80,10 +80,11 @@ uv run elastra-train train=protomotions                # ProtoMotions, conf/trai
 PPO on 256 environments; the training configurations (surfaces of the parallel environments, curriculum, PPO and reward settings) are in `conf/train/`.
 HoST trains in two stages of 500 updates: mattresses `a8` to `a64`, rigid ground and both trampolines without the position observation, then with it (its input weights starting at zero) and with the environments of mattresses `a16`, `a32`, `a64` moved to `a1`, `a2`, `a4`.
 ProtoMotions trains for 500 updates on the surfaces of the first HoST stage.
+`policy.pt` is the last update for HoST and, for ProtoMotions, the saved checkpoint with the highest success rate of the training episodes over the 50 updates up to it (`policy_checkpoint` in `conf/train/`).
 The initial state of every new episode is drawn in the main process from one generator seeded with the training seed, so a run does not depend on the number of worker processes.
 One update steps 256 environments for 64 control steps (524288 physics steps); `train.workers` sets the number of worker processes that step them (the result does not depend on it).
 With 48 workers on an Intel Xeon Gold 6258R a HoST update takes about 20 s (5.7 h for 1000 updates); with 32 workers on a shared Intel Xeon 6728P a ProtoMotions update took about 24 s (3.4 h for 500 updates).
-The run writes `history.jsonl`, checkpoints and the final `policy.pt` to `train.out`; evaluate it with `policy=<path>/policy.pt`.
+The run writes `history.jsonl`, checkpoints and `policy.pt` to `train.out`; evaluate it with `policy=<path>/policy.pt`.
 The same command continues an interrupted run from its latest checkpoint (`train.resume`).
 
 ## Load response
@@ -109,7 +110,8 @@ The mattress has no nonlinear compression term.
 
 The policies in `checkpoints/` are the HoST run (`conf/train/host.yaml`) and the ProtoMotions run (`conf/train/protomotions.yaml`) of the commands above.
 [docs/results.md](docs/results.md) reports their training and their evaluation.
-With its residual policy HoST succeeds in 696 of 960 test trials (423 with the original controller), and the ProtoMotions tracker in 126 of 400 (76 with the original controller).
+With its residual policy HoST succeeds in 696 of 960 test trials (423 with the original controller), and the ProtoMotions tracker in 180 of 400 (76 with the original controller).
+ProtoMotions runs with two other training seeds reach 138 and 154 of 400.
 On another CPU model a few of these outcomes can change ([docs/validation.md](docs/validation.md#setup)).
 
 ## Validation

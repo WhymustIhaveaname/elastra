@@ -80,7 +80,7 @@ def run_job(args: tuple) -> dict:
 
     cfg = config.load(overrides, config_name="evaluate")
     robot = str(cfg.controller)
-    torch.set_num_threads(int(cfg.torch_threads[robot]))
+    torch.set_num_threads(1)
     from elastra import residual
 
     surfaces = [Surface.parse(s) for s in job["surfaces"]]

@@ -49,6 +49,10 @@ workers: 32
 torch_threads: 2
 omp_thread_limit: 1
 checkpoint_every: 10
+# policy.pt: the saved checkpoint with the highest success rate of the training episodes
+# that ended in the `policy_window` updates up to it (the later checkpoint on a tie)
+policy_checkpoint: best_training_success
+policy_window: 50
 # continue from the latest checkpoint in `out` if there is one (every environment restarts)
 resume: true
 out: outputs/train/protomotions
