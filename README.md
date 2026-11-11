@@ -5,7 +5,7 @@ The repository contains the surface models, the success criterion, the evaluatio
 
 The paper, *Elastra: A Simulation Framework for Elastic Bodies*, is accepted at the [CoRL 2026 Workshop on Open Problems in Contact-Rich Loco-Manipulation](https://contact-rich-loco-manipulation.github.io/).
 
-A two-minute video of the project is at [yichg/elastra](https://github.com/yichg/elastra?tab=readme-ov-file).
+A two-minute video of the project is at [yichg/elastra](https://github.com/yichg/elastra#readme-ov-file).
 
 ## Install
 
